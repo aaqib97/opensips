@@ -42,6 +42,7 @@ str expiry_column = str_init(EXPIRY_COL);
 str forced_socket_column = str_init(FORCED_SOCKET_COL);
 str cluster_shtag_column = str_init(CLUSTER_SHTAG_COL);
 str state_column = str_init(STATE_COL);
+str server_expiry_column = str_init(SERVER_EXPIRY_COL);
 
 str reg_table_name = str_init(REG_TABLE_NAME);
 
@@ -89,6 +90,8 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 	unsigned int forced_socket_col;
 	unsigned int cluster_shtag_col;
 	unsigned int state_col;
+	unsigned int server_expiry_col;
+
 	db_key_t q_cols[REG_TABLE_TOTAL_COL_NO];
 	db_key_t key_cols[REG_KEY_COL_NO] =
 		{&aor_column, &binding_URI_column, &registrar_column};
@@ -104,7 +107,8 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 	str _param_str = {NULL, 0};
 	int reg_id_found = 0;
 	int sip_instance_found = 0;
-	str forced_socket, s;
+	str forced_socket, host, s;
+	int port, proto;
 	uac_reg_map_t uac_param;
 
 	p = int2str((unsigned long)(time(0)), &len);
@@ -355,13 +359,19 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 
 			/* Get the expiration param */
 			uac_param.expires = values[expiry_col].val.int_val;
-			if (uac_param.expires <= timer_interval) {
+			/*if (uac_param.expires <= timer_interval) {
 				LM_ERR("Please decrease timer_interval=[%u]"
 					" - requested expires=[%u] to small for AOR=[%.*s]\n",
 					timer_interval, uac_param.expires,
 					uac_param.to_uri.len, uac_param.to_uri.s);
 				continue;
-			}
+			}*/
+			/* Get the server expires column values */
+			uac_param.server_expiry.s =
+				(char*)values[server_expiry_col].val.string_val;
+			if (uac_param.server_expiry.s)
+				uac_param.server_expiry.len = strlen(uac_param.server_expiry.s);
+			if (uac_param.server_expiry.len == 0) uac_param.server_expiry.s = NULL;
 
 			/* Get the socket */
 			if (values[forced_socket_col].val.string_val) {
@@ -420,7 +430,7 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 			LM_DBG("registrar=[%.*s] AOR=[%.*s] auth_user=[%.*s] "
 				"password=[%.*s] expire=[%d] proxy=[%.*s] "
 				"contact=[%.*s] third_party=[%.*s] "
-				"cluster_shtag=[%.*s/%d] state=[%d]\n",
+				"cluster_shtag=[%.*s/%d] state=[%d] server_expiry=[%.*s] \n",
 				uac_param.registrar_uri.len, uac_param.registrar_uri.s,
 				uac_param.to_uri.len, uac_param.to_uri.s,
 				uac_param.auth_user.len, uac_param.auth_user.s,
@@ -431,7 +441,8 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 				uac_param.from_uri.len, uac_param.from_uri.s,
 				uac_param.cluster_shtag.len, uac_param.cluster_shtag.s,
 				uac_param.cluster_id,
-				values[state_col].val.int_val);
+				values[state_col].val.int_val,
+				uac_param.server_expiry.len, uac_param.server_expiry.s);
 			lock_get(&reg_htable[uac_param.hash_code].lock);
 			ret = add_record(&uac_param, &now, mode, coords);
 			lock_release(&reg_htable[uac_param.hash_code].lock);

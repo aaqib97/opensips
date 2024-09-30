@@ -45,6 +45,7 @@
 #define FORCED_SOCKET_COL		"forced_socket"
 #define CLUSTER_SHTAG_COL		"cluster_shtag"
 #define STATE_COL				"state"
+#define SERVER_EXPIRY_COL		"server_expiry"
 
 #define REG_TABLE_NAME			"registrant"
 
@@ -70,6 +71,7 @@ extern str expiry_column;
 extern str forced_socket_column;
 extern str cluster_shtag_column;
 extern str state_column;
+extern str server_expiry_column;
 
 extern str reg_table_name;
 

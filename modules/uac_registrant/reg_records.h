@@ -48,6 +48,7 @@
 #define REGISTRAR_ERROR_STATE	7
 #define UNREGISTERING_STATE	8
 #define AUTHENTICATING_UNREGISTER_STATE	9
+#define UNREGISTERED_STATE      10
 
 #define FORCE_SINGLE_REGISTRATION 0x1
 #define REG_ENABLED 0x2
@@ -66,6 +67,7 @@ typedef struct uac_reg_map {
 	str contact_params;		/* contact params */
 	str auth_user;			/* authentication user */
 	str auth_password;		/* authentication password */
+	str server_expiry;		/* server expiry */
 	unsigned int expires;		/* expiration interval */
 	struct socket_info *send_sock;	/* socket */
 	str cluster_shtag;	/* clustering sharing tag */
@@ -88,10 +90,16 @@ typedef struct reg_record {
 	time_t last_register_sent;
 	time_t registration_timeout;
 	str cluster_shtag;
+	str third_party_registrant; // To print third party registrant on reg list
+	str dest_ip;
+	str server_expiry;
+	str proxy_uri; // Proxy URI
 	int cluster_id;
+	int failed_attempts; // Counter for failed attempts since last reload - sagar
 	unsigned int flags;
 	struct reg_record *prev;
 	struct reg_record *next;
+	int local_src_port //local port used by opensips to send register request
 } reg_record_t;
 
 typedef struct reg_entry {
