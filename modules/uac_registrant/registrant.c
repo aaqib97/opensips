@@ -1501,8 +1501,9 @@ int run_mi_reg_enable(void *e_data, void *data, void *r_data)
 	str str_now = {NULL, 0};
 	time_t now;
 
-	if (!str_strcmp(&coords->contact, &rec->contact_uri) &&
-		!str_strcmp(&coords->registrar, &rec->td.rem_target)) {
+	// if (!str_strcmp(&coords->contact, &rec->contact_uri) &&
+	// 	!str_strcmp(&coords->registrar, &rec->td.rem_target)) {
+	if (!str_strcmp(&coords->contact, &rec->third_party_registrant)) {
 		if (!(rec->flags&REG_ENABLED)) {
 			if (rec->state == NOT_REGISTERED_STATE) {
 				now = time(0);
@@ -1536,8 +1537,7 @@ int run_mi_reg_disable(void *e_data, void *data, void *r_data)
 	reg_record_t *rec = (reg_record_t*)e_data;
 	record_coords_t *coords = (record_coords_t *)data;
 
-	if (!str_strcmp(&coords->contact, &rec->contact_uri) &&
-		!str_strcmp(&coords->registrar, &rec->td.rem_target)) {
+	if (!str_strcmp(&coords->contact, &rec->third_party_registrant)) {
 		if (rec->flags&REG_ENABLED) {
 			if (rec->state == REGISTERED_STATE) {
 				if(send_unregister((unsigned long)coords->extra, rec, NULL, 0)==1)
