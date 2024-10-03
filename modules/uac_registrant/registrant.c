@@ -759,12 +759,13 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 
 		}
 	}
-
+	reg_update_db_state(rec);
 	/* action successfully completed on current list element */
 	return 1; /* exit list traversal */
 done:
 	rec->state = INTERNAL_ERROR_STATE;
 	rec->registration_timeout = now + rec->expires;
+	reg_update_db_state(rec);
 	return -1; /* exit list traversal */
 }
 

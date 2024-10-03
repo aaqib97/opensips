@@ -43,6 +43,10 @@ str forced_socket_column = str_init(FORCED_SOCKET_COL);
 str cluster_shtag_column = str_init(CLUSTER_SHTAG_COL);
 str state_column = str_init(STATE_COL);
 str server_expiry_column = str_init(SERVER_EXPIRY_COL);
+str registration_status_column = str_init(REGISTRATION_STATUS_COL);
+str local_port_column = str_init(LOCAL_PORT_COL);
+str ip_column = str_init(IP_COL);
+
 
 str reg_table_name = str_init(REG_TABLE_NAME);
 
@@ -482,8 +486,9 @@ int reg_update_db_state(reg_record_t *rec)
 	db_key_t key_cols[REG_KEY_COL_NO] =
 		{&aor_column, &third_party_registrant_column, &third_party_registrant_column};
 	db_val_t key_vals[REG_KEY_COL_NO];
-	db_key_t update_key = &state_column;
-	db_val_t update_val;
+	db_key_t update_key_cols[UPDATE_REC_COL_NO] = 
+	{&state_column, &registration_status_column, &local_port_column , &ip_column};
+	db_val_t update_val_cols[UPDATE_REC_COL_NO];
 
 	key_vals[0].type = DB_STR;
 	key_vals[0].nul = 0;
@@ -496,14 +501,26 @@ int reg_update_db_state(reg_record_t *rec)
 	VAL_STR(&key_vals[1]) = rec->contact_uri;
 	VAL_STR(&key_vals[2]) = rec->td.rem_target;
 
-	VAL_TYPE(&update_val) = DB_INT;
-	VAL_NULL(&update_val) = 0;
-	VAL_INT(&update_val) = rec->flags&REG_ENABLED ? 0 : 1;
+	VAL_TYPE(&update_val_cols[0]) = DB_INT;
+	VAL_NULL(&update_val_cols[0]) = 0;
+	VAL_INT(&update_val_cols[0]) = rec->flags&REG_ENABLED ? 0 : 1;
+
+	VAL_TYPE(&update_val_cols[1]) = DB_INT;
+	VAL_NULL(&update_val_cols[1]) = 0;
+	VAL_INT(&update_val_cols[1]) = rec->state;
+
+	VAL_TYPE(&update_val_cols[2]) = DB_INT;
+	VAL_NULL(&update_val_cols[2]) = 0;
+	VAL_INT(&update_val_cols[2]) = rec->local_src_port;
+
+	VAL_TYPE(&update_val_cols[3]) = DB_STR;
+	VAL_NULL(&update_val_cols[3]) = 0;
+	VAL_STR(&update_val_cols[3]) = rec->dest_ip;
 
 	if(use_reg_table()) return -1;
 
-	if (reg_dbf.update(reg_db_handle, key_cols, 0, key_vals, &update_key,
-		&update_val, 1, 1) < 0) {
+	if (reg_dbf.update(reg_db_handle, key_cols, 0, key_vals, &update_key_cols,
+		&update_val_cols, 1, 1) < 0) {
 		LM_ERR("Failed to update registrant state in database\n");
 		return -1;
 	}
