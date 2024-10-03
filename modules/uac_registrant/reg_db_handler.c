@@ -136,6 +136,7 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 	q_cols[forced_socket_col = n_result_cols++] = &forced_socket_column;
 	q_cols[cluster_shtag_col = n_result_cols++] = &cluster_shtag_column;
 	q_cols[state_col = n_result_cols++] = &state_column;
+	q_cols[server_expiry_col = n_result_cols++] = &server_expiry_column;
 
 	if (mode == REG_DB_LOAD_RECORD) {
 		key_vals[0].type = DB_STR;
