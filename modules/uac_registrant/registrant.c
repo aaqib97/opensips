@@ -1301,8 +1301,9 @@ int run_mi_reg_list_record(void *e_data, void *data, void *r_data)
 	reg_record_t *rec = (reg_record_t*)e_data;
 	record_coords_t *coords = (record_coords_t *)data;
 
-	if (!str_strcmp(&coords->contact, &rec->contact_uri) &&
-		!str_strcmp(&coords->registrar, &rec->td.rem_target)) {
+	// if (!str_strcmp(&coords->contact, &rec->contact_uri) &&
+	// 	!str_strcmp(&coords->registrar, &rec->td.rem_target)) {
+	if (!str_strcmp(&coords->contact, &rec->third_party_registrant)) {
 		return run_mi_reg_list(rec, coords->extra, NULL) ? -1 : 1;
 	} else
 		return 0;  /* continue search */
