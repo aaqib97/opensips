@@ -938,8 +938,12 @@ int send_unregister(unsigned int hash_index, reg_record_t *rec, str *auth_hdr,
 		memcpy(p, expires_hdr.s, expires_hdr.len);
 		p += expires_hdr.len;
 	}
-	memcpy(p, expires, expires_len);
-	p += expires_len;
+	//Hardcoding expires to 0 for unregister packet. These chnages were not there in 3.1 version but added as custom in 3.4
+	// memcpy(p, expires, expires_len);
+	// p += expires_len;
+	memcpy(p, "0", 1); 
+        p++;
+	////////////////////////////////////////////
 	memcpy(p, CRLF, CRLF_LEN); p += CRLF_LEN;
 	/* adding exires header */
 	memcpy(p, expires_hdr.s, expires_hdr.len);
