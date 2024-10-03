@@ -94,7 +94,7 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 
 	db_key_t q_cols[REG_TABLE_TOTAL_COL_NO];
 	db_key_t key_cols[REG_KEY_COL_NO] =
-		{&aor_column, &binding_URI_column, &registrar_column};
+		{&aor_column, &third_party_registrant_column, &third_party_registrant_column};
 	db_val_t key_vals[REG_KEY_COL_NO];
 
 	char *p = NULL;
@@ -480,7 +480,7 @@ error:
 int reg_update_db_state(reg_record_t *rec)
 {
 	db_key_t key_cols[REG_KEY_COL_NO] =
-		{&aor_column, &binding_URI_column, &registrar_column};
+		{&aor_column, &third_party_registrant_column, &third_party_registrant_column};
 	db_val_t key_vals[REG_KEY_COL_NO];
 	db_key_t update_key = &state_column;
 	db_val_t update_val;
