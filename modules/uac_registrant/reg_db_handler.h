@@ -51,7 +51,7 @@
 
 #define REG_TABLE_VERSION		3
 
-#define REG_TABLE_TOTAL_COL_NO		12
+#define REG_TABLE_TOTAL_COL_NO		13
 
 #define REG_FETCH_SIZE			128
 
