@@ -498,8 +498,8 @@ int reg_update_db_state(reg_record_t *rec)
 	key_vals[2].nul = 0;
 
 	VAL_STR(&key_vals[0]) = rec->td.rem_uri;
-	VAL_STR(&key_vals[1]) = rec->contact_uri;
-	VAL_STR(&key_vals[2]) = rec->td.rem_target;
+	VAL_STR(&key_vals[1]) = rec->third_party_registrant;
+	VAL_STR(&key_vals[2]) = rec->third_party_registrant;
 
 	VAL_TYPE(&update_val_cols[0]) = DB_INT;
 	VAL_NULL(&update_val_cols[0]) = 0;
