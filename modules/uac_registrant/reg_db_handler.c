@@ -519,8 +519,9 @@ int reg_update_db_state(reg_record_t *rec)
 
 	if(use_reg_table()) return -1;
 
+
 	if (reg_dbf.update(reg_db_handle, key_cols, 0, key_vals, &update_key_cols,
-		&update_val_cols, 1, 1) < 0) {
+		&update_val_cols, 3, 4) < 0) {
 		LM_ERR("Failed to update registrant state in database\n");
 		return -1;
 	}
