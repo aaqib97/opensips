@@ -497,6 +497,7 @@ int reg_update_db_state(reg_record_t *rec)
 	key_vals[2].type = DB_STR;
 	key_vals[2].nul = 0;
 
+
 	VAL_STR(&key_vals[0]) = rec->td.rem_uri;
 	VAL_STR(&key_vals[1]) = rec->third_party_registrant;
 	VAL_STR(&key_vals[2]) = rec->third_party_registrant;
@@ -513,8 +514,8 @@ int reg_update_db_state(reg_record_t *rec)
 	VAL_NULL(&update_val_cols[2]) = 0;
 	VAL_INT(&update_val_cols[2]) = rec->local_src_port;
 
-	VAL_TYPE(&update_val_cols[3]) = DB_STR;
-	VAL_NULL(&update_val_cols[3]) = 0;
+	update_val_cols[3].type = DB_STR;
+	update_val_cols[3].nul = 0;
 	VAL_STR(&update_val_cols[3]) = rec->dest_ip;
 
 	if(use_reg_table()) return -1;
