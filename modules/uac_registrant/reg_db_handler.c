@@ -489,7 +489,19 @@ int reg_update_db_state(reg_record_t *rec)
 	db_key_t update_key_cols[UPDATE_REC_COL_NO] = 
 	{&state_column, &registration_status_column, &local_port_column , &ip_column};
 	db_val_t update_val_cols[UPDATE_REC_COL_NO];
+	char* p;
+	struct ip_addr addr;
+	int len;
 
+	sockaddr2ip_addr(&addr, &rec->td.forced_to_su.s);
+	p = ip_addr2a(&addr);
+	if (p == NULL) {
+		LM_ERR("Dest IP not found. Please add details of users in log in future\n");
+	} else {
+		len = strlen(p);
+		rec->dest_ip.s=p;
+		rec->dest_ip.len=len;
+	}
 	key_vals[0].type = DB_STR;
 	key_vals[0].nul = 0;
 	key_vals[1].type = DB_STR;
