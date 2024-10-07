@@ -116,6 +116,7 @@ unsigned int timer_interval = 100;
 
 reg_table_t reg_htable = NULL;
 unsigned int reg_hsize = 1;
+unsigned int run_db_custom_updates = 0;
 
 static str db_url = {NULL, 0};
 
@@ -142,6 +143,7 @@ typedef struct reg_tm_cb {
 /** Exported parameters */
 static const param_export_t params[]= {
 	{"hash_size",		INT_PARAM,			&reg_hsize},
+	{"run_db_custom_updates",		INT_PARAM,			&run_db_custom_updates},
 	{"default_expires",	INT_PARAM,			&default_expires},
 	{"timer_interval",	INT_PARAM,			&timer_interval},
 	{"enable_clustering",	INT_PARAM,			&enable_clustering},
@@ -759,13 +761,17 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 
 		}
 	}
-	reg_update_db_state(rec);
+	if(run_db_custom_updates){
+		reg_update_db_state(rec);
+	}
 	/* action successfully completed on current list element */
 	return 1; /* exit list traversal */
 done:
 	rec->state = INTERNAL_ERROR_STATE;
 	rec->registration_timeout = now + rec->expires;
-	reg_update_db_state(rec);
+	if(run_db_custom_updates){
+		reg_update_db_state(rec);
+	}	
 	return -1; /* exit list traversal */
 }
 
