@@ -116,6 +116,7 @@ unsigned int timer_interval = 100;
 
 reg_table_t reg_htable = NULL;
 unsigned int reg_hsize = 1;
+unsigned int run_db_custom_updates = 0;
 
 static str db_url = {NULL, 0};
 
@@ -142,6 +143,7 @@ typedef struct reg_tm_cb {
 /** Exported parameters */
 static const param_export_t params[]= {
 	{"hash_size",		INT_PARAM,			&reg_hsize},
+	{"run_db_custom_updates",		INT_PARAM,			&run_db_custom_updates},
 	{"default_expires",	INT_PARAM,			&default_expires},
 	{"timer_interval",	INT_PARAM,			&timer_interval},
 	{"enable_clustering",	INT_PARAM,			&enable_clustering},
@@ -759,12 +761,17 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 
 		}
 	}
-
+	if(run_db_custom_updates){
+		reg_update_db_state(rec);
+	}
 	/* action successfully completed on current list element */
 	return 1; /* exit list traversal */
 done:
 	rec->state = INTERNAL_ERROR_STATE;
 	rec->registration_timeout = now + rec->expires;
+	if(run_db_custom_updates){
+		reg_update_db_state(rec);
+	}	
 	return -1; /* exit list traversal */
 }
 
@@ -938,8 +945,12 @@ int send_unregister(unsigned int hash_index, reg_record_t *rec, str *auth_hdr,
 		memcpy(p, expires_hdr.s, expires_hdr.len);
 		p += expires_hdr.len;
 	}
-	memcpy(p, expires, expires_len);
-	p += expires_len;
+	//Hardcoding expires to 0 for unregister packet. These chnages were not there in 3.1 version but added as custom in 3.4
+	// memcpy(p, expires, expires_len);
+	// p += expires_len;
+	memcpy(p, "0", 1); 
+        p++;
+	////////////////////////////////////////////
 	memcpy(p, CRLF, CRLF_LEN); p += CRLF_LEN;
 	/* adding exires header */
 	memcpy(p, expires_hdr.s, expires_hdr.len);
@@ -1301,8 +1312,9 @@ int run_mi_reg_list_record(void *e_data, void *data, void *r_data)
 	reg_record_t *rec = (reg_record_t*)e_data;
 	record_coords_t *coords = (record_coords_t *)data;
 
-	if (!str_strcmp(&coords->contact, &rec->contact_uri) &&
-		!str_strcmp(&coords->registrar, &rec->td.rem_target)) {
+	// if (!str_strcmp(&coords->contact, &rec->contact_uri) &&
+	// 	!str_strcmp(&coords->registrar, &rec->td.rem_target)) {
+	if (!str_strcmp(&coords->contact, &rec->third_party_registrant)) {
 		return run_mi_reg_list(rec, coords->extra, NULL) ? -1 : 1;
 	} else
 		return 0;  /* continue search */
@@ -1500,8 +1512,9 @@ int run_mi_reg_enable(void *e_data, void *data, void *r_data)
 	str str_now = {NULL, 0};
 	time_t now;
 
-	if (!str_strcmp(&coords->contact, &rec->contact_uri) &&
-		!str_strcmp(&coords->registrar, &rec->td.rem_target)) {
+	// if (!str_strcmp(&coords->contact, &rec->contact_uri) &&
+	// 	!str_strcmp(&coords->registrar, &rec->td.rem_target)) {
+	if (!str_strcmp(&coords->contact, &rec->third_party_registrant)) {
 		if (!(rec->flags&REG_ENABLED)) {
 			if (rec->state == NOT_REGISTERED_STATE) {
 				now = time(0);
@@ -1535,8 +1548,7 @@ int run_mi_reg_disable(void *e_data, void *data, void *r_data)
 	reg_record_t *rec = (reg_record_t*)e_data;
 	record_coords_t *coords = (record_coords_t *)data;
 
-	if (!str_strcmp(&coords->contact, &rec->contact_uri) &&
-		!str_strcmp(&coords->registrar, &rec->td.rem_target)) {
+	if (!str_strcmp(&coords->contact, &rec->third_party_registrant)) {
 		if (rec->flags&REG_ENABLED) {
 			if (rec->state == REGISTERED_STATE) {
 				if(send_unregister((unsigned long)coords->extra, rec, NULL, 0)==1)

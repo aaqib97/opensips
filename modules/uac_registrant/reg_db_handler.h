@@ -46,16 +46,21 @@
 #define CLUSTER_SHTAG_COL		"cluster_shtag"
 #define STATE_COL				"state"
 #define SERVER_EXPIRY_COL		"server_expiry"
+#define REGISTRATION_STATUS_COL		"registration_status"
+#define LOCAL_PORT_COL		"local_port"
+#define IP_COL		"ip"
 
 #define REG_TABLE_NAME			"registrant"
 
 #define REG_TABLE_VERSION		3
 
-#define REG_TABLE_TOTAL_COL_NO		12
+#define REG_TABLE_TOTAL_COL_NO		13
 
 #define REG_FETCH_SIZE			128
 
 #define REG_KEY_COL_NO 3
+
+#define UPDATE_REC_COL_NO 4
 
 #define REG_DB_STATE_ENABLED  0
 

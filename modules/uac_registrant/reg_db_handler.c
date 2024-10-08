@@ -43,6 +43,10 @@ str forced_socket_column = str_init(FORCED_SOCKET_COL);
 str cluster_shtag_column = str_init(CLUSTER_SHTAG_COL);
 str state_column = str_init(STATE_COL);
 str server_expiry_column = str_init(SERVER_EXPIRY_COL);
+str registration_status_column = str_init(REGISTRATION_STATUS_COL);
+str local_port_column = str_init(LOCAL_PORT_COL);
+str ip_column = str_init(IP_COL);
+
 
 str reg_table_name = str_init(REG_TABLE_NAME);
 
@@ -94,7 +98,7 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 
 	db_key_t q_cols[REG_TABLE_TOTAL_COL_NO];
 	db_key_t key_cols[REG_KEY_COL_NO] =
-		{&aor_column, &binding_URI_column, &registrar_column};
+		{&aor_column, &third_party_registrant_column, &third_party_registrant_column};
 	db_val_t key_vals[REG_KEY_COL_NO];
 
 	char *p = NULL;
@@ -136,6 +140,7 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 	q_cols[forced_socket_col = n_result_cols++] = &forced_socket_column;
 	q_cols[cluster_shtag_col = n_result_cols++] = &cluster_shtag_column;
 	q_cols[state_col = n_result_cols++] = &state_column;
+	q_cols[server_expiry_col = n_result_cols++] = &server_expiry_column;
 
 	if (mode == REG_DB_LOAD_RECORD) {
 		key_vals[0].type = DB_STR;
@@ -479,36 +484,96 @@ error:
 
 int reg_update_db_state(reg_record_t *rec)
 {
-	db_key_t key_cols[REG_KEY_COL_NO] =
-		{&aor_column, &binding_URI_column, &registrar_column};
-	db_val_t key_vals[REG_KEY_COL_NO];
-	db_key_t update_key = &state_column;
-	db_val_t update_val;
+	if(run_db_custom_updates) {
+			db_key_t key_cols[REG_KEY_COL_NO] =
+				{&aor_column, &third_party_registrant_column, &third_party_registrant_column};
+			db_val_t key_vals[REG_KEY_COL_NO];
+			db_key_t update_key_cols[UPDATE_REC_COL_NO] = 
+			{&state_column, &registration_status_column, &local_port_column , &ip_column};
+			db_val_t update_val_cols[UPDATE_REC_COL_NO];
+			char* p;
+			struct ip_addr addr;
+			int len;
 
-	key_vals[0].type = DB_STR;
-	key_vals[0].nul = 0;
-	key_vals[1].type = DB_STR;
-	key_vals[1].nul = 0;
-	key_vals[2].type = DB_STR;
-	key_vals[2].nul = 0;
+			sockaddr2ip_addr(&addr, &rec->td.forced_to_su.s);
+			p = ip_addr2a(&addr);
+			if (p == NULL) {
+				LM_ERR("Dest IP not found. Please add details of users in log in future\n");
+			} else {
+				len = strlen(p);
+				rec->dest_ip.s=p;
+				rec->dest_ip.len=len;
+			}
+			key_vals[0].type = DB_STR;
+			key_vals[0].nul = 0;
+			key_vals[1].type = DB_STR;
+			key_vals[1].nul = 0;
+			key_vals[2].type = DB_STR;
+			key_vals[2].nul = 0;
 
-	VAL_STR(&key_vals[0]) = rec->td.rem_uri;
-	VAL_STR(&key_vals[1]) = rec->contact_uri;
-	VAL_STR(&key_vals[2]) = rec->td.rem_target;
 
-	VAL_TYPE(&update_val) = DB_INT;
-	VAL_NULL(&update_val) = 0;
-	VAL_INT(&update_val) = rec->flags&REG_ENABLED ? 0 : 1;
+			VAL_STR(&key_vals[0]) = rec->td.rem_uri;
+			VAL_STR(&key_vals[1]) = rec->third_party_registrant;
+			VAL_STR(&key_vals[2]) = rec->third_party_registrant;
 
-	if(use_reg_table()) return -1;
+			VAL_TYPE(&update_val_cols[0]) = DB_INT;
+			VAL_NULL(&update_val_cols[0]) = 0;
+			VAL_INT(&update_val_cols[0]) = rec->flags&REG_ENABLED ? 0 : 1;
 
-	if (reg_dbf.update(reg_db_handle, key_cols, 0, key_vals, &update_key,
-		&update_val, 1, 1) < 0) {
-		LM_ERR("Failed to update registrant state in database\n");
-		return -1;
+			VAL_TYPE(&update_val_cols[1]) = DB_INT;
+			VAL_NULL(&update_val_cols[1]) = 0;
+			VAL_INT(&update_val_cols[1]) = rec->state;
+
+			VAL_TYPE(&update_val_cols[2]) = DB_INT;
+			VAL_NULL(&update_val_cols[2]) = 0;
+			VAL_INT(&update_val_cols[2]) = rec->local_src_port;
+
+			update_val_cols[3].type = DB_STR;
+			update_val_cols[3].nul = 0;
+			VAL_STR(&update_val_cols[3]) = rec->dest_ip;
+
+			if(use_reg_table()) return -1;
+
+
+			if (reg_dbf.update(reg_db_handle, key_cols, 0, key_vals, &update_key_cols,
+				&update_val_cols, 3, 4) < 0) {
+				LM_ERR("Failed to update registrant state in database\n");
+				return -1;
+			}
+
+			return 0;
+	} else {
+				db_key_t key_cols[REG_KEY_COL_NO] =
+				{&aor_column, &third_party_registrant_column, &third_party_registrant_column};
+				db_val_t key_vals[REG_KEY_COL_NO];
+				db_key_t update_key = &state_column;
+				db_val_t update_val;
+
+				key_vals[0].type = DB_STR;
+				key_vals[0].nul = 0;
+				key_vals[1].type = DB_STR;
+				key_vals[1].nul = 0;
+				key_vals[2].type = DB_STR;
+				key_vals[2].nul = 0;
+
+				VAL_STR(&key_vals[0]) = rec->td.rem_uri;
+				VAL_STR(&key_vals[1]) = rec->third_party_registrant;
+				VAL_STR(&key_vals[2]) = rec->third_party_registrant;
+
+				VAL_TYPE(&update_val) = DB_INT;
+				VAL_NULL(&update_val) = 0;
+				VAL_INT(&update_val) = rec->flags&REG_ENABLED ? 0 : 1;
+
+				if(use_reg_table()) return -1;
+
+				if (reg_dbf.update(reg_db_handle, key_cols, 0, key_vals, &update_key,
+					&update_val, 1, 1) < 0) {
+					LM_ERR("Failed to update registrant state in database\n");
+					return -1;
+				}
+
+				return 0;
 	}
-
-	return 0;
 }
 
 int init_reg_db(const str *db_url)
