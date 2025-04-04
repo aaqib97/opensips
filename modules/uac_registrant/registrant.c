@@ -42,6 +42,8 @@
 #include "reg_db_handler.h"
 #include "clustering.h"
 
+/* Function declarations */
+static int extract_identifier(const str *uri, str *identifier);
 
 #define UAC_REGISTRAR_URI_PARAM              1
 #define UAC_PROXY_URI_PARAM                  2
@@ -526,11 +528,31 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 		head_contact = msg->contact;
 		contact = ((contact_body_t*)msg->contact->parsed)->contacts;
 		while (contact) {
-			/* Check for binding */
-			if (contact->uri.len==rec->contact_uri.len &&
-				strncmp(contact->uri.s,rec->contact_uri.s,contact->uri.len)==0){
+			/* Check both full URI match and identifier match */
+			str contact_id = {0}, rec_id = {0};
+			int id_match = 0;
+			
+			/* First try exact match */
+			if (contact->uri.len == rec->contact_uri.len &&
+				contact->uri.s && rec->contact_uri.s &&
+				strncmp(contact->uri.s, rec->contact_uri.s, contact->uri.len) == 0) {
+				id_match = 1;
+			} else {
+				/* Try to match by identifier */
+				if (extract_identifier(&contact->uri, &contact_id) == 0 &&
+					extract_identifier(&rec->contact_uri, &rec_id) == 0 &&
+					contact_id.s && rec_id.s) {
+					if (contact_id.len == rec_id.len &&
+						contact_id.len > 0 &&
+						strncmp(contact_id.s, rec_id.s, contact_id.len) == 0) {
+						id_match = 1;
+					}
+				}
+			}
+			
+			if (id_match) {
 				if (contact->expires && contact->expires->body.len) {
-					if (str2int(&contact->expires->body, &exp)<0) {
+					if (str2int(&contact->expires->body, &exp) < 0) {
 						LM_ERR("Unable to extract expires from [%.*s]"
 							" for binding [%.*s]\n",
 							contact->expires->body.len,
@@ -1619,4 +1641,50 @@ static mi_response_t *mi_reg_disable(const mi_params_t *params,
 		return init_mi_error(404, MI_SSTR("No such registrant"));
 
 	return init_mi_result_ok();
+}
+
+/* Helper function to extract identifier from URI */
+static int extract_identifier(const str *uri, str *identifier) {
+    char *start, *end;
+    size_t remaining_len;
+    
+    if (!uri || !uri->s || !uri->len) {
+        return -1;
+    }
+    
+    if (!identifier) {
+        return -1;
+    }
+    
+    /* Initialize identifier to empty */
+    identifier->s = NULL;
+    identifier->len = 0;
+    
+    /* Find the start of the identifier (after sip:) */
+    start = memchr(uri->s, ':', uri->len);
+    if (!start) {
+        return -1;
+    }
+    
+    /* Calculate remaining length after ':' */
+    remaining_len = uri->s + uri->len - start;
+    if (remaining_len <= 1) { /* Check if we have any characters after ':' */
+        return -1;
+    }
+    start++; /* Skip the ':' */
+    
+    /* Find the end of the identifier (before @) */
+    end = memchr(start, '@', remaining_len - 1);
+    if (!end) {
+        return -1;
+    }
+    
+    /* Verify the extracted length is valid */
+    if (end <= start) {
+        return -1;
+    }
+    
+    identifier->s = start;
+    identifier->len = end - start;
+    return 0;
 }
