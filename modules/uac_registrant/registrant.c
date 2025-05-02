@@ -1553,6 +1553,8 @@ int run_mi_reg_enable(void *e_data, void *data, void *r_data)
 					rec->registration_timeout = now + rec->expires - timer_interval;
 					rec->state = INTERNAL_ERROR_STATE;
 				}
+			} else if (rec->state != AUTHENTICATING_STATE && rec->state != REGISTERING_STATE && rec->state != AUTHENTICATING_UNREGISTER_STATE && rec->state != UNREGISTERING_STATE) {
+				rec->registration_timeout = now - 5;
 			}
 
 			rec->flags |= REG_ENABLED;
