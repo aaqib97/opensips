@@ -1554,7 +1554,15 @@ int run_mi_reg_enable(void *e_data, void *data, void *r_data)
 					rec->state = INTERNAL_ERROR_STATE;
 				}
 			} else if (rec->state != AUTHENTICATING_STATE && rec->state != REGISTERING_STATE && rec->state != AUTHENTICATING_UNREGISTER_STATE && rec->state != UNREGISTERING_STATE) {
-				rec->registration_timeout = now - 5;
+				if(send_register((unsigned long)coords->extra, rec, NULL)==1) {
+					rec->last_register_sent = now;
+					rec->state = REGISTERING_STATE;
+				} else {
+					rec->registration_timeout = now + rec->expires - timer_interval;
+					rec->state = INTERNAL_ERROR_STATE;
+				}
+			} else {
+				LM_ERR("Invalid state for reg enable\n");
 			}
 
 			rec->flags |= REG_ENABLED;
