@@ -44,6 +44,8 @@
 
 /* Function declarations */
 static int extract_identifier(const str *uri, str *identifier);
+static unsigned int calculate_exponential_backoff_delay(int attempt);
+static void apply_jitter(unsigned int *delay);
 
 #define UAC_REGISTRAR_URI_PARAM              1
 #define UAC_PROXY_URI_PARAM                  2
@@ -116,6 +118,12 @@ uac_auth_api_t uac_auth_api;
 unsigned int default_expires = 3600;
 unsigned int timer_interval = 100;
 
+/* Exponential backoff configuration */
+unsigned int retry_base_delay = 5;      /* Base delay in seconds */
+unsigned int retry_max_delay = 300;     /* Maximum delay in seconds (5 minutes) */
+unsigned int retry_max_attempts = 10;   /* Maximum retry attempts */
+unsigned int retry_backoff_multiplier = 2; /* Backoff multiplier */
+
 reg_table_t reg_htable = NULL;
 unsigned int reg_hsize = 1;
 unsigned int run_db_custom_updates = 0;
@@ -163,6 +171,10 @@ static const param_export_t params[]= {
 	{"forced_socket_column",	STR_PARAM,	&forced_socket_column.s},
 	{"cluster_shtag_column",	STR_PARAM,	&cluster_shtag_column.s},
 	{"state_column",	STR_PARAM,		&state_column.s},
+	{"retry_base_delay",	INT_PARAM,		&retry_base_delay},
+	{"retry_max_delay",	INT_PARAM,		&retry_max_delay},
+	{"retry_max_attempts",	INT_PARAM,		&retry_max_attempts},
+	{"retry_backoff_multiplier",	INT_PARAM,	&retry_backoff_multiplier},
 	{0,0,0}
 };
 
@@ -255,6 +267,23 @@ static int mod_init(void)
 	}
 	if(timer_interval<10){
 		LM_ERR("timer_interval to short: [%d]<10\n", timer_interval);
+		return -1;
+	}
+	if(retry_base_delay<1){
+		LM_ERR("retry_base_delay too short: [%d]<1\n", retry_base_delay);
+		return -1;
+	}
+	if(retry_max_delay<retry_base_delay){
+		LM_ERR("retry_max_delay [%d] must be >= retry_base_delay [%d]\n", 
+			retry_max_delay, retry_base_delay);
+		return -1;
+	}
+	if(retry_max_attempts<1){
+		LM_ERR("retry_max_attempts too small: [%d]<1\n", retry_max_attempts);
+		return -1;
+	}
+	if(retry_backoff_multiplier<2){
+		LM_ERR("retry_backoff_multiplier too small: [%d]<2\n", retry_backoff_multiplier);
 		return -1;
 	}
 	if(reg_hsize<1 || reg_hsize>20) {
@@ -1037,11 +1066,28 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 	case INTERNAL_ERROR_STATE:
 	case REGISTRAR_ERROR_STATE:
 		reg_print_record(rec);
-		rec->failed_attempts++;
-		if(rec->failed_attempts > 4){
-			LM_ERR("Max failed attempts exceeded for rec [%p]\n", rec);
+		
+		/* Check if it's time to retry based on exponential backoff */
+		if (now < rec->next_retry_time) {
+			LM_DBG("Retry not yet due for record [%p], next retry at %ld (now: %ld)\n", 
+				rec, (long)rec->next_retry_time, (long)now);
 			break;
 		}
+		
+		rec->failed_attempts++;
+		if(rec->failed_attempts > retry_max_attempts){
+			LM_ERR("Max failed attempts exceeded for rec [%p] (attempts: %d)\n", 
+				rec, rec->failed_attempts);
+			break;
+		}
+		
+		/* Calculate next retry delay using exponential backoff */
+		rec->current_retry_delay = calculate_exponential_backoff_delay(rec->failed_attempts - 1);
+		rec->next_retry_time = now + rec->current_retry_delay;
+		
+		LM_DBG("Retrying registration for record [%p], attempt %d, delay: %u seconds\n", 
+			rec, rec->failed_attempts, rec->current_retry_delay);
+		
 		if (rec->flags&REG_ENABLED) {
 			new_call_id_ftag_4_record(rec, s_now);
 			if(send_register(i, rec, NULL)==1) {
@@ -1066,6 +1112,8 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 		}
 	case NOT_REGISTERED_STATE:
 		rec->failed_attempts=0;
+		rec->next_retry_time = 0;  /* Reset retry timer */
+		rec->current_retry_delay = 0;  /* Reset retry delay */
 		if(rec->expires==0){
 			if(send_unregister(i, rec, NULL,0)==1) {
 				rec->state = UNREGISTERING_STATE;
@@ -1417,6 +1465,10 @@ int run_compare_rec(void *e_data, void *data, void *r_data)
 		new_rec->dest_ip = old_rec->dest_ip;
 		new_rec->local_src_port = old_rec->local_src_port;
 		new_rec->td.forced_to_su=old_rec->td.forced_to_su;
+		/* Preserve retry state */
+		new_rec->failed_attempts = old_rec->failed_attempts;
+		new_rec->next_retry_time = old_rec->next_retry_time;
+		new_rec->current_retry_delay = old_rec->current_retry_delay;
 		LM_DBG("Inside run compare rec function\n Old Expires=%d , New Expires=%d \n Old Server Expiry= [%.*s] , New Server Expiry=[%.*s]",old_rec->expires,new_rec->expires,old_rec->server_expiry.len,old_rec->server_expiry.s,new_rec->server_expiry.len,new_rec->server_expiry.s);
 		
 		if (old_rec->state == REGISTERED_STATE){
@@ -1442,7 +1494,12 @@ int run_compare_rec(void *e_data, void *data, void *r_data)
 			}
 
 		}
-		new_rec->failed_attempts=0; //In case of reg reload, reset failed attempts
+		/* Reset retry state for successful registrations during reload */
+		if (new_rec->state == REGISTERED_STATE || new_rec->state == NOT_REGISTERED_STATE) {
+			new_rec->failed_attempts=0; //In case of reg reload, reset failed attempts
+			new_rec->next_retry_time = 0;
+			new_rec->current_retry_delay = 0;
+		}
 	}
 	return 0;
 }
@@ -1697,4 +1754,52 @@ static int extract_identifier(const str *uri, str *identifier) {
     identifier->s = start;
     identifier->len = end - start;
     return 0;
+}
+
+/* Calculate exponential backoff delay with jitter */
+static unsigned int calculate_exponential_backoff_delay(int attempt)
+{
+    unsigned int delay;
+    
+    if (attempt <= 0) {
+        return retry_base_delay;
+    }
+    
+    /* Calculate exponential backoff: base_delay * (multiplier ^ attempt) */
+    delay = retry_base_delay;
+    for (int i = 0; i < attempt && delay < retry_max_delay; i++) {
+        delay *= retry_backoff_multiplier;
+    }
+    
+    /* Cap at maximum delay */
+    if (delay > retry_max_delay) {
+        delay = retry_max_delay;
+    }
+    
+    /* Apply jitter to prevent thundering herd */
+    apply_jitter(&delay);
+    
+    return delay;
+}
+
+/* Apply jitter to reduce thundering herd effect */
+static void apply_jitter(unsigned int *delay)
+{
+    unsigned int jitter_range;
+    unsigned int jitter;
+    
+    if (*delay <= 0) {
+        return;
+    }
+    
+    /* Add up to 25% jitter */
+    jitter_range = *delay / 4;
+    if (jitter_range == 0) {
+        jitter_range = 1;
+    }
+    
+    /* Generate random jitter between 0 and jitter_range */
+    jitter = rand() % (jitter_range + 1);
+    
+    *delay += jitter;
 }
