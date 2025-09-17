@@ -121,7 +121,7 @@ unsigned int timer_interval = 100;
 /* Exponential backoff configuration */
 unsigned int retry_base_delay = 5;      /* Base delay in seconds */
 unsigned int retry_max_delay = 300;     /* Maximum delay in seconds (5 minutes) */
-unsigned int retry_max_attempts = 10;   /* Maximum retry attempts */
+unsigned int retry_max_attempts = 5;   /* Maximum retry attempts */
 unsigned int retry_backoff_multiplier = 2; /* Backoff multiplier */
 
 reg_table_t reg_htable = NULL;
@@ -1495,11 +1495,9 @@ int run_compare_rec(void *e_data, void *data, void *r_data)
 
 		}
 		/* Reset retry state for successful registrations during reload */
-		if (new_rec->state == REGISTERED_STATE || new_rec->state == NOT_REGISTERED_STATE) {
 			new_rec->failed_attempts=0; //In case of reg reload, reset failed attempts
 			new_rec->next_retry_time = 0;
 			new_rec->current_retry_delay = 0;
-		}
 	}
 	return 0;
 }
