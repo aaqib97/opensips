@@ -124,6 +124,13 @@ unsigned int retry_max_delay = 300;     /* Maximum delay in seconds (5 minutes) 
 unsigned int retry_max_attempts = 5;   /* Maximum retry attempts */
 unsigned int retry_backoff_multiplier = 2; /* Backoff multiplier */
 
+/* Rate limiting configuration */
+unsigned int reg_rate_limit_per_sec = 10;  /* Maximum registrations per second */
+unsigned int reg_re_reg_limit_per_sec = 50; /* Maximum re-registrations per second */
+unsigned int reg_rate_limit_count = 0;     /* Current registrations sent in this second */
+unsigned int reg_re_reg_count = 0;         /* Current re-registrations sent in this second */
+time_t reg_rate_limit_last_sec = 0;        /* Last second when count was reset */
+
 reg_table_t reg_htable = NULL;
 unsigned int reg_hsize = 1;
 unsigned int run_db_custom_updates = 0;
@@ -175,6 +182,8 @@ static const param_export_t params[]= {
 	{"retry_max_delay",	INT_PARAM,		&retry_max_delay},
 	{"retry_max_attempts",	INT_PARAM,		&retry_max_attempts},
 	{"retry_backoff_multiplier",	INT_PARAM,	&retry_backoff_multiplier},
+	{"reg_rate_limit_per_sec",	INT_PARAM,	&reg_rate_limit_per_sec},
+	{"reg_re_reg_limit_per_sec",	INT_PARAM,	&reg_re_reg_limit_per_sec},
 	{0,0,0}
 };
 
@@ -1110,25 +1119,60 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 		if (now < rec->registration_timeout) {
 			break;
 		}
+		/* Fall through to NOT_REGISTERED_STATE for re-registration */
 	case NOT_REGISTERED_STATE:
 		rec->next_retry_time = 0;  /* Reset retry timer */
 		rec->current_retry_delay = 0;  /* Reset retry delay */
-		if(rec->expires==0){
+		
+		/* Rate limiting logic for registrations */
+		if(rec->expires!=0 && (rec->flags&REG_ENABLED)) {
+			/* Check if we need to reset the rate limit counters for a new second */
+			if (now != reg_rate_limit_last_sec) {
+				reg_rate_limit_count = 0;
+				reg_re_reg_count = 0;
+				reg_rate_limit_last_sec = now;
+			}
+			
+			/* Determine if this is a re-registration (came from REGISTERED_STATE) */
+			int is_re_registration = (rec->state == REGISTERED_STATE);
+			unsigned int *current_count = is_re_registration ? &reg_re_reg_count : &reg_rate_limit_count;
+			unsigned int *current_limit = is_re_registration ? &reg_re_reg_limit_per_sec : &reg_rate_limit_per_sec;
+			
+			/* Check rate limiting only if limit is greater than 0 */
+			if (*current_limit > 0) {
+				/* Check if we've reached the rate limit for this second */
+				if (*current_count >= *current_limit) {
+					/* Rate limit exceeded, skip this record for now */
+					LM_DBG("Rate limit exceeded (%d/%d) for %s, skipping record [%p] for this second\n", 
+						*current_count, *current_limit, is_re_registration ? "re-registration" : "registration", rec);
+					break;
+				}
+			}
+			
+			/* Send registration and increment appropriate rate limit counter */
+			if(send_register(i, rec, NULL)==1) {
+				rec->last_register_sent = now;
+				rec->state = REGISTERING_STATE;
+				/* Only increment counter if rate limiting is enabled */
+				if (*current_limit > 0) {
+					(*current_count)++;
+					LM_DBG("%s sent (rate: %d/%d) for record [%p]\n", 
+						is_re_registration ? "Re-registration" : "Registration", *current_count, *current_limit, rec);
+				} else {
+					LM_DBG("%s sent (rate limiting disabled) for record [%p]\n", 
+						is_re_registration ? "Re-registration" : "Registration", rec);
+				}
+			} else {
+				rec->registration_timeout = now + rec->expires - timer_interval;
+				rec->state = INTERNAL_ERROR_STATE;
+			}
+		} else if(rec->expires==0){
+			/* Unregister case - no rate limiting needed */
 			if(send_unregister(i, rec, NULL,0)==1) {
 				rec->state = UNREGISTERING_STATE;
 			} else {
 				rec->state = INTERNAL_ERROR_STATE;
 			}
-		}else{
-		if (rec->flags&REG_ENABLED) {
-			if(send_register(i, rec, NULL)==1) {
-				rec->last_register_sent = now;
-				rec->state = REGISTERING_STATE;
-			} else {
-				rec->registration_timeout = now + rec->expires - timer_interval;
-				rec->state = INTERNAL_ERROR_STATE;
-			}
-		}
 		}
 		break;
 	default:
