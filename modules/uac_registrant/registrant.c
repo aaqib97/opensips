@@ -1111,7 +1111,6 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 			break;
 		}
 	case NOT_REGISTERED_STATE:
-		rec->failed_attempts=0;
 		rec->next_retry_time = 0;  /* Reset retry timer */
 		rec->current_retry_delay = 0;  /* Reset retry delay */
 		if(rec->expires==0){
@@ -1494,8 +1493,12 @@ int run_compare_rec(void *e_data, void *data, void *r_data)
 			}
 
 		}
-		/* Reset retry state for successful registrations during reload */
-			new_rec->failed_attempts=0; //In case of reg reload, reset failed attempts
+			/* Reset retry state for successful registrations during reload */
+			if(new_rec->failed_attempts > 0	) {
+					new_rec->failed_attempts=new_rec->failed_attempts - 1; //In case of reg reload, provide one more chance to retry
+			} else {
+				new_rec->failed_attempts=0; //In case of reg reload, reset failed attempts
+			}
 			new_rec->next_retry_time = 0;
 			new_rec->current_retry_delay = 0;
 	}
