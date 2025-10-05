@@ -663,6 +663,10 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 			} else {
 				/* succesfully REGISTERED */
 				rec->state = REGISTERED_STATE;
+				/* Reset retry state on successful registration */
+				rec->failed_attempts = 0;
+				rec->next_retry_time = 0;
+				rec->current_retry_delay = 0;
 				if (exp) rec->expires = exp;
 				if (rec->expires <= timer_interval) {
 					LM_ERR("Please decrease timer_interval=[%u]"
@@ -1083,19 +1087,22 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 			break;
 		}
 		
-		rec->failed_attempts++;
-		if(rec->failed_attempts > retry_max_attempts){
-			LM_ERR("Max failed attempts exceeded for rec [%p] (attempts: %d)\n", 
-				rec, rec->failed_attempts);
+		/* Check max attempts BEFORE incrementing */
+		if(rec->failed_attempts >= retry_max_attempts){
+			LM_ERR("Max failed attempts exceeded for rec [%p] (attempts: %d, max: %d)\n", 
+				rec, rec->failed_attempts, retry_max_attempts);
 			break;
 		}
 		
+		rec->failed_attempts++;
+		
 		/* Calculate next retry delay using exponential backoff */
-		rec->current_retry_delay = calculate_exponential_backoff_delay(rec->failed_attempts - 1);
+		rec->current_retry_delay = calculate_exponential_backoff_delay(rec->failed_attempts);
 		rec->next_retry_time = now + rec->current_retry_delay;
 		
-		LM_DBG("Retrying registration for record [%p], attempt %d, delay: %u seconds\n", 
-			rec, rec->failed_attempts, rec->current_retry_delay);
+		LM_DBG("Retrying registration for record [%p], attempt %d/%d, delay: %u seconds (base: %d, max: %d, multiplier: %d)\n", 
+			rec, rec->failed_attempts, retry_max_attempts, rec->current_retry_delay, 
+			retry_base_delay, retry_max_delay, retry_backoff_multiplier);
 		
 		if (rec->flags&REG_ENABLED) {
 			new_call_id_ftag_4_record(rec, s_now);
@@ -1823,6 +1830,9 @@ static unsigned int calculate_exponential_backoff_delay(int attempt)
     
     /* Apply jitter to prevent thundering herd */
     apply_jitter(&delay);
+    
+    LM_DBG("Exponential backoff calculation: attempt=%d, base=%d, multiplier=%d, calculated_delay=%d, max_delay=%d\n",
+        attempt, retry_base_delay, retry_backoff_multiplier, delay, retry_max_delay);
     
     return delay;
 }
