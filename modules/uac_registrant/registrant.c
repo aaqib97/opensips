@@ -1089,7 +1089,7 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 		
 		/* Check max attempts BEFORE incrementing */
 		if(rec->failed_attempts >= retry_max_attempts){
-			LM_ERR("Max failed attempts exceeded for rec [%p] (attempts: %d, max: %d)\n", 
+			LM_DBG("Max failed attempts exceeded for rec [%p] (attempts: %d, max: %d) - skipping retry\n", 
 				rec, rec->failed_attempts, retry_max_attempts);
 			break;
 		}
@@ -1817,13 +1817,18 @@ static unsigned int calculate_exponential_backoff_delay(int attempt)
         return retry_base_delay;
     }
     
-    /* Calculate exponential backoff: base_delay * (multiplier ^ attempt) */
+    /* Calculate exponential backoff: base_delay * (multiplier ^ (attempt-1)) */
     delay = retry_base_delay;
-    for (int i = 0; i < attempt && delay < retry_max_delay; i++) {
+    for (int i = 1; i < attempt; i++) {
         delay *= retry_backoff_multiplier;
+        /* Cap at maximum delay during calculation to prevent overflow */
+        if (delay > retry_max_delay) {
+            delay = retry_max_delay;
+            break;
+        }
     }
     
-    /* Cap at maximum delay */
+    /* Final cap at maximum delay */
     if (delay > retry_max_delay) {
         delay = retry_max_delay;
     }
