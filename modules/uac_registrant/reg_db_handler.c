@@ -46,6 +46,7 @@ str server_expiry_column = str_init(SERVER_EXPIRY_COL);
 str registration_status_column = str_init(REGISTRATION_STATUS_COL);
 str local_port_column = str_init(LOCAL_PORT_COL);
 str ip_column = str_init(IP_COL);
+str user_agent_column = str_init(USER_AGENT_COL);
 
 
 str reg_table_name = str_init(REG_TABLE_NAME);
@@ -95,6 +96,8 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 	unsigned int cluster_shtag_col;
 	unsigned int state_col;
 	unsigned int server_expiry_col;
+	unsigned int user_agent_col = 0;
+	int has_user_agent_col = 0;
 
 	db_key_t q_cols[REG_TABLE_TOTAL_COL_NO];
 	db_key_t key_cols[REG_KEY_COL_NO] =
@@ -141,6 +144,10 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 	q_cols[cluster_shtag_col = n_result_cols++] = &cluster_shtag_column;
 	q_cols[state_col = n_result_cols++] = &state_column;
 	q_cols[server_expiry_col = n_result_cols++] = &server_expiry_column;
+	if (enable_custom_user_agent) {
+		q_cols[user_agent_col = n_result_cols++] = &user_agent_column;
+		has_user_agent_col = 1;
+	}
 
 	if (mode == REG_DB_LOAD_RECORD) {
 		key_vals[0].type = DB_STR;
@@ -155,7 +162,7 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 		VAL_STR(&key_vals[2]) = coords->registrar;
 
 		if(reg_dbf.query(reg_db_handle, key_cols, 0, key_vals, q_cols,
-			REG_KEY_COL_NO, REG_TABLE_TOTAL_COL_NO, 0, &res) < 0) {
+			REG_KEY_COL_NO, n_result_cols, 0, &res) < 0) {
 			LM_ERR("Error while querying database\n");
 			return -1;
 		}
@@ -163,7 +170,7 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 		/* select the whole tabel and all the columns */
 		if (DB_CAPABILITY(reg_dbf, DB_CAP_FETCH)) {
 			if(reg_dbf.query(reg_db_handle, 0, 0, 0, q_cols, 0,
-					REG_TABLE_TOTAL_COL_NO, 0, 0) < 0) {
+					n_result_cols, 0, 0) < 0) {
 				LM_ERR("Error while querying (fetch) database\n");
 				return -1;
 			}
@@ -173,7 +180,7 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 			}
 		} else {
 			if(reg_dbf.query(reg_db_handle, 0, 0, 0, q_cols, 0,
-					REG_TABLE_TOTAL_COL_NO, 0, &res) < 0) {
+					n_result_cols, 0, &res) < 0) {
 				LM_ERR("Error while querying database\n");
 				return -1;
 			}
@@ -428,9 +435,18 @@ int load_reg_info_from_db(unsigned int mode, record_coords_t *coords)
 				}
 			}
 
-			/* Get the initial state (enabled/disabled) */
-			if (values[state_col].val.int_val == REG_DB_STATE_ENABLED)
-				uac_param.flags |= REG_ENABLED;
+		/* Get the user agent (only if column was queried) */
+		if (has_user_agent_col) {
+			uac_param.user_agent.s =
+				(char*)values[user_agent_col].val.string_val;
+			if (uac_param.user_agent.s)
+				uac_param.user_agent.len = strlen(uac_param.user_agent.s);
+			if (uac_param.user_agent.len == 0) uac_param.user_agent.s = NULL;
+		}
+
+		/* Get the initial state (enabled/disabled) */
+		if (values[state_col].val.int_val == REG_DB_STATE_ENABLED)
+			uac_param.flags |= REG_ENABLED;
 
 			LM_DBG("registrar=[%.*s] AOR=[%.*s] auth_user=[%.*s] "
 				"password=[%.*s] expire=[%d] proxy=[%.*s] "

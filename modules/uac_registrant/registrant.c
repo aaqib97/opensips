@@ -119,6 +119,7 @@ unsigned int timer_interval = 100;
 reg_table_t reg_htable = NULL;
 unsigned int reg_hsize = 1;
 unsigned int run_db_custom_updates = 0;
+unsigned int enable_custom_user_agent = 0;
 
 static str db_url = {NULL, 0};
 
@@ -126,11 +127,12 @@ static str register_method = str_init("REGISTER");
 static str contact_hdr = str_init("Contact: ");
 static str expires_hdr = str_init("Expires: ");
 static str expires_param = str_init(";expires=");
+static str user_agent_hdr = str_init("User-Agent: ");
 static str true_test = str_init("true");
 static str false_test = str_init("false");
 
-char extra_hdrs_buf[512];
-static str extra_hdrs={extra_hdrs_buf, 512};
+char extra_hdrs_buf[1024];
+static str extra_hdrs={extra_hdrs_buf, 1024};
 
 
 /* TM bind */
@@ -163,6 +165,8 @@ static const param_export_t params[]= {
 	{"forced_socket_column",	STR_PARAM,	&forced_socket_column.s},
 	{"cluster_shtag_column",	STR_PARAM,	&cluster_shtag_column.s},
 	{"state_column",	STR_PARAM,		&state_column.s},
+	{"user_agent_column",	STR_PARAM,	&user_agent_column.s},
+	{"enable_custom_user_agent",	INT_PARAM,	&enable_custom_user_agent},
 	{0,0,0}
 };
 
@@ -889,6 +893,14 @@ int send_register(unsigned int hash_index, reg_record_t *rec, str *auth_hdr)
 	p += expires_len;
 	memcpy(p, CRLF, CRLF_LEN); p += CRLF_LEN;
 
+	if (rec->user_agent.s && rec->user_agent.len) {
+		memcpy(p, user_agent_hdr.s, user_agent_hdr.len);
+		p += user_agent_hdr.len;
+		memcpy(p, rec->user_agent.s, rec->user_agent.len);
+		p += rec->user_agent.len;
+		memcpy(p, CRLF, CRLF_LEN); p += CRLF_LEN;
+	}
+
 	if (auth_hdr) {
 		memcpy(p, auth_hdr->s, auth_hdr->len);
 		p += auth_hdr->len;
@@ -981,6 +993,14 @@ int send_unregister(unsigned int hash_index, reg_record_t *rec, str *auth_hdr,
         p++;
 	memcpy(p, CRLF, CRLF_LEN); p += CRLF_LEN;
 	/*There are custom changes in this section which we are not overwriting in 3.4.main*/
+
+	if (rec->user_agent.s && rec->user_agent.len) {
+		memcpy(p, user_agent_hdr.s, user_agent_hdr.len);
+		p += user_agent_hdr.len;
+		memcpy(p, rec->user_agent.s, rec->user_agent.len);
+		p += rec->user_agent.len;
+		memcpy(p, CRLF, CRLF_LEN); p += CRLF_LEN;
+	}
 
 	if (auth_hdr) {
 		memcpy(p, auth_hdr->s, auth_hdr->len);
@@ -1285,6 +1305,11 @@ int run_mi_reg_list(void *e_data, void *data, void *r_data)
 		}
 	if (add_mi_number(record_item, MI_SSTR("local_port"), rec->local_src_port) < 0)
 		goto error;
+
+	if (rec->user_agent.s && rec->user_agent.len)
+		if (add_mi_string(record_item, MI_SSTR("user_agent"),
+			rec->user_agent.s, rec->user_agent.len) < 0)
+			goto error;
 
 	/* action successfully completed on current list element */
 	return 0; /* continue list traversal */

@@ -72,6 +72,7 @@ typedef struct uac_reg_map {
 	struct socket_info *send_sock;	/* socket */
 	str cluster_shtag;	/* clustering sharing tag */
 	int cluster_id;
+	str user_agent;		/* per-registrant User-Agent header value */
 	unsigned int flags;	/* record flags */
 	struct uac_reg_map *next;
 } uac_reg_map_t;
@@ -90,6 +91,7 @@ typedef struct reg_record {
 	time_t last_register_sent;
 	time_t registration_timeout;
 	str cluster_shtag;
+	str user_agent;
 	str third_party_registrant; // To print third party registrant on reg list
 	str dest_ip;
 	str server_expiry;
