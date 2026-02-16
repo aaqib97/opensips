@@ -86,7 +86,9 @@ When a registrant has a non-empty `user_agent` value, the outgoing REGISTER and 
 User-Agent: <value from database>
 ```
 
-This header is placed after the Contact/Expires headers and before any Authorization header.
+The per-registrant value **replaces** the default OpenSIPS User-Agent header (set by `server_signature`) for that request. This is done by temporarily swapping the global `user_agent_header` before the TM module builds the SIP message, then restoring it afterward. This avoids duplicate User-Agent headers.
+
+If no per-registrant `user_agent` is set, the default OpenSIPS User-Agent header is used as before.
 
 ## MI reg_list Output
 

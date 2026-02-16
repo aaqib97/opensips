@@ -38,6 +38,7 @@
 #include "../../parser/parse_expires.h"
 #include "../uac_auth/uac_auth.h"
 #include "../../lib/digest_auth/digest_auth.h"
+#include "../../globals.h"
 #include "reg_records.h"
 #include "reg_db_handler.h"
 #include "clustering.h"
@@ -133,6 +134,9 @@ static str false_test = str_init("false");
 
 char extra_hdrs_buf[1024];
 static str extra_hdrs={extra_hdrs_buf, 1024};
+
+static char custom_ua_buf[512];
+static str custom_ua_hdr = {custom_ua_buf, 0};
 
 
 /* TM bind */
@@ -893,14 +897,6 @@ int send_register(unsigned int hash_index, reg_record_t *rec, str *auth_hdr)
 	p += expires_len;
 	memcpy(p, CRLF, CRLF_LEN); p += CRLF_LEN;
 
-	if (rec->user_agent.s && rec->user_agent.len) {
-		memcpy(p, user_agent_hdr.s, user_agent_hdr.len);
-		p += user_agent_hdr.len;
-		memcpy(p, rec->user_agent.s, rec->user_agent.len);
-		p += rec->user_agent.len;
-		memcpy(p, CRLF, CRLF_LEN); p += CRLF_LEN;
-	}
-
 	if (auth_hdr) {
 		memcpy(p, auth_hdr->s, auth_hdr->len);
 		p += auth_hdr->len;
@@ -909,6 +905,20 @@ int send_register(unsigned int hash_index, reg_record_t *rec, str *auth_hdr)
 
 	LM_DBG("extra_hdrs=[%p][%d]->[%.*s]\n",
 		extra_hdrs.s, extra_hdrs.len, extra_hdrs.len, extra_hdrs.s);
+
+	/* Temporarily swap global User-Agent if per-registrant value is set */
+	str saved_ua = {NULL, 0};
+	int ua_swapped = 0;
+	if (rec->user_agent.s && rec->user_agent.len) {
+		saved_ua = *user_agent_header;
+		memcpy(custom_ua_buf, user_agent_hdr.s, user_agent_hdr.len);
+		memcpy(custom_ua_buf + user_agent_hdr.len, rec->user_agent.s,
+			rec->user_agent.len);
+		custom_ua_hdr.len = user_agent_hdr.len + rec->user_agent.len;
+		user_agent_header->s = custom_ua_hdr.s;
+		user_agent_header->len = custom_ua_hdr.len;
+		ua_swapped = 1;
+	}
 
 	if ( !push_new_global_context() ) {
 
@@ -931,6 +941,12 @@ int send_register(unsigned int hash_index, reg_record_t *rec, str *auth_hdr)
 			osips_shm_free);	/* function to release the parameter */
 
 		pop_pushed_global_context();
+	}
+
+	/* Restore original User-Agent */
+	if (ua_swapped) {
+		user_agent_header->s = saved_ua.s;
+		user_agent_header->len = saved_ua.len;
 	}
 
 	if (result < 1)
@@ -994,14 +1010,6 @@ int send_unregister(unsigned int hash_index, reg_record_t *rec, str *auth_hdr,
 	memcpy(p, CRLF, CRLF_LEN); p += CRLF_LEN;
 	/*There are custom changes in this section which we are not overwriting in 3.4.main*/
 
-	if (rec->user_agent.s && rec->user_agent.len) {
-		memcpy(p, user_agent_hdr.s, user_agent_hdr.len);
-		p += user_agent_hdr.len;
-		memcpy(p, rec->user_agent.s, rec->user_agent.len);
-		p += rec->user_agent.len;
-		memcpy(p, CRLF, CRLF_LEN); p += CRLF_LEN;
-	}
-
 	if (auth_hdr) {
 		memcpy(p, auth_hdr->s, auth_hdr->len);
 		p += auth_hdr->len;
@@ -1011,6 +1019,20 @@ int send_unregister(unsigned int hash_index, reg_record_t *rec, str *auth_hdr,
 	LM_DBG("extra_hdrs=[%p][%d]->[%.*s]\n",
 		extra_hdrs.s, extra_hdrs.len, extra_hdrs.len, extra_hdrs.s);
 
+	/* Temporarily swap global User-Agent if per-registrant value is set */
+	str saved_ua = {NULL, 0};
+	int ua_swapped = 0;
+	if (rec->user_agent.s && rec->user_agent.len) {
+		saved_ua = *user_agent_header;
+		memcpy(custom_ua_buf, user_agent_hdr.s, user_agent_hdr.len);
+		memcpy(custom_ua_buf + user_agent_hdr.len, rec->user_agent.s,
+			rec->user_agent.len);
+		custom_ua_hdr.len = user_agent_hdr.len + rec->user_agent.len;
+		user_agent_header->s = custom_ua_hdr.s;
+		user_agent_header->len = custom_ua_hdr.len;
+		ua_swapped = 1;
+	}
+
 	result=tmb.t_request_within(
 		&register_method,	/* method */
 		&extra_hdrs,		/* extra headers*/
@@ -1019,6 +1041,12 @@ int send_unregister(unsigned int hash_index, reg_record_t *rec, str *auth_hdr,
 		reg_tm_cback,		/* callback function */
 		(void *)cb_param,	/* callback param */
 		osips_shm_free);	/* function to release the parameter */
+
+	/* Restore original User-Agent */
+	if (ua_swapped) {
+		user_agent_header->s = saved_ua.s;
+		user_agent_header->len = saved_ua.len;
+	}
 
 	if (result < 1)
 		shm_free(cb_param);
