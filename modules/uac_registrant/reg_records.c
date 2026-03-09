@@ -168,7 +168,8 @@ int add_record(uac_reg_map_t *uac, str *now, unsigned int mode,
 		uac->to_uri.len + uac->from_uri.len + uac->registrar_uri.len +
 		uac->auth_user.len + uac->auth_password.len +
 		uac->contact_uri.len + uac->contact_params.len + uac->proxy_uri.len +
-		uac->cluster_shtag.len + uac->server_expiry.len + uac->proxy_uri.len + uac->from_uri.len;
+		uac->cluster_shtag.len + uac->server_expiry.len + uac->proxy_uri.len + uac->from_uri.len +
+		uac->user_agent.len;
 
 	if (mode == REG_DB_LOAD_RECORD) {
 		new_elem = slinkedl_new_element(&reg_alloc, size, (void**)&record);
@@ -321,6 +322,14 @@ int add_record(uac_reg_map_t *uac, str *now, unsigned int mode,
 		record->cluster_shtag.len = uac->cluster_shtag.len;
 		memcpy(p, uac->cluster_shtag.s, uac->cluster_shtag.len);
 		p += uac->cluster_shtag.len;
+	}
+
+	/* Setting the user agent */
+	if (uac->user_agent.s && uac->user_agent.len) {
+		record->user_agent.s = p;
+		record->user_agent.len = uac->user_agent.len;
+		memcpy(p, uac->user_agent.s, uac->user_agent.len);
+		p += uac->user_agent.len;
 	}
 
 	/* Setting the flags */

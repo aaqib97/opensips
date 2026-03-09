@@ -38,6 +38,7 @@
 #include "../../parser/parse_expires.h"
 #include "../uac_auth/uac_auth.h"
 #include "../../lib/digest_auth/digest_auth.h"
+#include "../../globals.h"
 #include "reg_records.h"
 #include "reg_db_handler.h"
 #include "clustering.h"
@@ -119,6 +120,7 @@ unsigned int timer_interval = 100;
 reg_table_t reg_htable = NULL;
 unsigned int reg_hsize = 1;
 unsigned int run_db_custom_updates = 0;
+unsigned int enable_custom_user_agent = 0;
 
 static str db_url = {NULL, 0};
 
@@ -126,11 +128,15 @@ static str register_method = str_init("REGISTER");
 static str contact_hdr = str_init("Contact: ");
 static str expires_hdr = str_init("Expires: ");
 static str expires_param = str_init(";expires=");
+static str user_agent_hdr = str_init("User-Agent: ");
 static str true_test = str_init("true");
 static str false_test = str_init("false");
 
-char extra_hdrs_buf[512];
-static str extra_hdrs={extra_hdrs_buf, 512};
+char extra_hdrs_buf[1024];
+static str extra_hdrs={extra_hdrs_buf, 1024};
+
+static char custom_ua_buf[512];
+static str custom_ua_hdr = {custom_ua_buf, 0};
 
 
 /* TM bind */
@@ -163,6 +169,8 @@ static const param_export_t params[]= {
 	{"forced_socket_column",	STR_PARAM,	&forced_socket_column.s},
 	{"cluster_shtag_column",	STR_PARAM,	&cluster_shtag_column.s},
 	{"state_column",	STR_PARAM,		&state_column.s},
+	{"user_agent_column",	STR_PARAM,	&user_agent_column.s},
+	{"enable_custom_user_agent",	INT_PARAM,	&enable_custom_user_agent},
 	{0,0,0}
 };
 
@@ -898,6 +906,20 @@ int send_register(unsigned int hash_index, reg_record_t *rec, str *auth_hdr)
 	LM_DBG("extra_hdrs=[%p][%d]->[%.*s]\n",
 		extra_hdrs.s, extra_hdrs.len, extra_hdrs.len, extra_hdrs.s);
 
+	/* Temporarily swap global User-Agent if per-registrant value is set */
+	str saved_ua = {NULL, 0};
+	int ua_swapped = 0;
+	if (rec->user_agent.s && rec->user_agent.len) {
+		saved_ua = *user_agent_header;
+		memcpy(custom_ua_buf, user_agent_hdr.s, user_agent_hdr.len);
+		memcpy(custom_ua_buf + user_agent_hdr.len, rec->user_agent.s,
+			rec->user_agent.len);
+		custom_ua_hdr.len = user_agent_hdr.len + rec->user_agent.len;
+		user_agent_header->s = custom_ua_hdr.s;
+		user_agent_header->len = custom_ua_hdr.len;
+		ua_swapped = 1;
+	}
+
 	if ( !push_new_global_context() ) {
 
 		LM_ERR("failed to alloc new ctx in pkg\n");
@@ -919,6 +941,12 @@ int send_register(unsigned int hash_index, reg_record_t *rec, str *auth_hdr)
 			osips_shm_free);	/* function to release the parameter */
 
 		pop_pushed_global_context();
+	}
+
+	/* Restore original User-Agent */
+	if (ua_swapped) {
+		user_agent_header->s = saved_ua.s;
+		user_agent_header->len = saved_ua.len;
 	}
 
 	if (result < 1)
@@ -991,6 +1019,20 @@ int send_unregister(unsigned int hash_index, reg_record_t *rec, str *auth_hdr,
 	LM_DBG("extra_hdrs=[%p][%d]->[%.*s]\n",
 		extra_hdrs.s, extra_hdrs.len, extra_hdrs.len, extra_hdrs.s);
 
+	/* Temporarily swap global User-Agent if per-registrant value is set */
+	str saved_ua = {NULL, 0};
+	int ua_swapped = 0;
+	if (rec->user_agent.s && rec->user_agent.len) {
+		saved_ua = *user_agent_header;
+		memcpy(custom_ua_buf, user_agent_hdr.s, user_agent_hdr.len);
+		memcpy(custom_ua_buf + user_agent_hdr.len, rec->user_agent.s,
+			rec->user_agent.len);
+		custom_ua_hdr.len = user_agent_hdr.len + rec->user_agent.len;
+		user_agent_header->s = custom_ua_hdr.s;
+		user_agent_header->len = custom_ua_hdr.len;
+		ua_swapped = 1;
+	}
+
 	result=tmb.t_request_within(
 		&register_method,	/* method */
 		&extra_hdrs,		/* extra headers*/
@@ -999,6 +1041,12 @@ int send_unregister(unsigned int hash_index, reg_record_t *rec, str *auth_hdr,
 		reg_tm_cback,		/* callback function */
 		(void *)cb_param,	/* callback param */
 		osips_shm_free);	/* function to release the parameter */
+
+	/* Restore original User-Agent */
+	if (ua_swapped) {
+		user_agent_header->s = saved_ua.s;
+		user_agent_header->len = saved_ua.len;
+	}
 
 	if (result < 1)
 		shm_free(cb_param);
@@ -1285,6 +1333,11 @@ int run_mi_reg_list(void *e_data, void *data, void *r_data)
 		}
 	if (add_mi_number(record_item, MI_SSTR("local_port"), rec->local_src_port) < 0)
 		goto error;
+
+	if (rec->user_agent.s && rec->user_agent.len)
+		if (add_mi_string(record_item, MI_SSTR("user_agent"),
+			rec->user_agent.s, rec->user_agent.len) < 0)
+			goto error;
 
 	/* action successfully completed on current list element */
 	return 0; /* continue list traversal */

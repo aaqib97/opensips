@@ -49,12 +49,13 @@
 #define REGISTRATION_STATUS_COL		"registration_status"
 #define LOCAL_PORT_COL		"local_port"
 #define IP_COL		"ip"
+#define USER_AGENT_COL		"user_agent"
 
 #define REG_TABLE_NAME			"registrant"
 
 #define REG_TABLE_VERSION		3
 
-#define REG_TABLE_TOTAL_COL_NO		13
+#define REG_TABLE_TOTAL_COL_NO		14
 
 #define REG_FETCH_SIZE			128
 
@@ -77,10 +78,12 @@ extern str forced_socket_column;
 extern str cluster_shtag_column;
 extern str state_column;
 extern str server_expiry_column;
+extern str user_agent_column;
 
 extern str reg_table_name;
 
 extern unsigned int timer_interval;
+extern unsigned int enable_custom_user_agent;
 
 int init_reg_db(const str *db_url);
 int connect_reg_db(const str *db_url);
