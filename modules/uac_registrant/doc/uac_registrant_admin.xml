@@ -498,6 +498,48 @@ modparam("uac_registrant", "state_column", "status")
 		</example>
 	</section>
 
+	<section id="param_auto_disable_on_failure" xreflabel="auto_disable_on_failure">
+		<title><varname>auto_disable_on_failure</varname> (integer)</title>
+		<para>
+		If enabled, a registrant will be automatically disabled
+		(its <varname>state</varname> set to <emphasis>1</emphasis>, same effect
+		as the <function moreinfo="none">reg_disable</function> MI command) once
+		the existing internal failure-retry cap is reached
+		(more than 4 consecutive failed attempts) AND the registrant's
+		<varname>registration_status</varname> is either
+		<emphasis>WRONG_CREDENTIALS_STATE</emphasis> (6) or
+		<emphasis>REGISTRAR_ERROR_STATE</emphasis> (7).
+		</para>
+		<para>
+		This protects the upstream registrar from being repeatedly hit with
+		bad credentials or persistent error responses, which can cause the
+		SIP account to be locked out by the provider.
+		</para>
+		<para>
+		Notes: no UNREGISTER is sent when the registrant is auto-disabled
+		(it is not registered with the server in those failure states). The
+		change is also persisted to the database via the standard
+		<varname>state_column</varname> update path. To re-arm the registrant
+		afterwards, use the <function moreinfo="none">reg_enable</function> MI
+		command. Failure states <emphasis>REGISTER_TIMEOUT_STATE</emphasis> (4)
+		and <emphasis>INTERNAL_ERROR_STATE</emphasis> (5) are intentionally NOT
+		auto-disabled.
+		</para>
+		<para>
+		<emphasis>
+			Default value is <quote>0</quote> (disabled).
+		</emphasis>
+		</para>
+		<example>
+		<title>Set <quote>auto_disable_on_failure</quote> parameter</title>
+		<programlisting format="linespecific">
+...
+modparam("uac_registrant", "auto_disable_on_failure", 1)
+...
+</programlisting>
+		</example>
+	</section>
+
 	</section>
 
 	<section id="exported_functions" xreflabel="exported_functions">

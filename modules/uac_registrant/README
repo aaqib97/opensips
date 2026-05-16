@@ -30,6 +30,7 @@ UAC Registrant Module
               1.3.15. forced_socket_column (string)
               1.3.16. cluster_shtag_column (string)
               1.3.17. state_column (string)
+              1.3.18. auto_disable_on_failure (integer)
 
         1.4. Exported Functions
         1.5. Exported MI Functions
@@ -74,6 +75,7 @@ UAC Registrant Module
    1.15. Set “forced_socket_column” parameter
    1.16. Set “cluster_shtag_column” parameter
    1.17. Set “state_column” parameter
+   1.18. Set “auto_disable_on_failure” parameter
 
 Chapter 1. Admin Guide
 
@@ -378,6 +380,34 @@ modparam("uac_registrant", "cluster_shtag_column", "sh")
    Example 1.17. Set “state_column” parameter
 ...
 modparam("uac_registrant", "state_column", "status")
+...
+
+1.3.18. auto_disable_on_failure (integer)
+
+   If enabled, a registrant will be automatically disabled (its
+   state set to 1, same effect as the reg_disable MI command) once
+   the existing internal failure-retry cap is reached (more than 4
+   consecutive failed attempts) AND the registrant's
+   registration_status is either WRONG_CREDENTIALS_STATE (6) or
+   REGISTRAR_ERROR_STATE (7).
+
+   This protects the upstream registrar from being repeatedly hit
+   with bad credentials or persistent error responses, which can
+   cause the SIP account to be locked out by the provider.
+
+   Notes: no UNREGISTER is sent when the registrant is
+   auto-disabled (it is not registered with the server in those
+   failure states). The change is also persisted to the database
+   via the standard state_column update path. To re-arm the
+   registrant afterwards, use the reg_enable MI command. Failure
+   states REGISTER_TIMEOUT_STATE (4) and INTERNAL_ERROR_STATE (5)
+   are intentionally NOT auto-disabled.
+
+   Default value is “0” (disabled).
+
+   Example 1.18. Set “auto_disable_on_failure” parameter
+...
+modparam("uac_registrant", "auto_disable_on_failure", 1)
 ...
 
 1.4. Exported Functions
