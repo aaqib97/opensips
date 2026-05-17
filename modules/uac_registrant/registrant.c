@@ -121,7 +121,6 @@ reg_table_t reg_htable = NULL;
 unsigned int reg_hsize = 1;
 unsigned int run_db_custom_updates = 0;
 unsigned int enable_custom_user_agent = 0;
-unsigned int auto_disable_on_failure = 0;
 
 static str db_url = {NULL, 0};
 
@@ -172,7 +171,6 @@ static const param_export_t params[]= {
 	{"state_column",	STR_PARAM,		&state_column.s},
 	{"user_agent_column",	STR_PARAM,	&user_agent_column.s},
 	{"enable_custom_user_agent",	INT_PARAM,	&enable_custom_user_agent},
-	{"auto_disable_on_failure",	INT_PARAM,	&auto_disable_on_failure},
 	{0,0,0}
 };
 
@@ -1090,17 +1088,6 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 		rec->failed_attempts++;
 		if(rec->failed_attempts > 4){
 			LM_ERR("Max failed attempts exceeded for rec [%p]\n", rec);
-			if (auto_disable_on_failure &&
-				(rec->state == WRONG_CREDENTIALS_STATE ||
-				 rec->state == REGISTRAR_ERROR_STATE) &&
-				(rec->flags & REG_ENABLED)) {
-				LM_WARN("auto_disable_on_failure: disabling registrant"
-					" [%.*s] after %d attempts in state [%d]\n",
-					rec->td.rem_uri.len, rec->td.rem_uri.s,
-					rec->failed_attempts, rec->state);
-				rec->flags &= ~REG_ENABLED;
-				reg_update_db_state(rec);
-			}
 			break;
 		}
 		if (rec->flags&REG_ENABLED) {
