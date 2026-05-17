@@ -121,6 +121,7 @@ reg_table_t reg_htable = NULL;
 unsigned int reg_hsize = 1;
 unsigned int run_db_custom_updates = 0;
 unsigned int enable_custom_user_agent = 0;
+unsigned int auto_disable_on_failure = 0;
 
 static str db_url = {NULL, 0};
 
@@ -152,6 +153,7 @@ typedef struct reg_tm_cb {
 static const param_export_t params[]= {
 	{"hash_size",		INT_PARAM,			&reg_hsize},
 	{"run_db_custom_updates",		INT_PARAM,			&run_db_custom_updates},
+	{"auto_disable_on_failure",	INT_PARAM,			&auto_disable_on_failure},
 	{"default_expires",	INT_PARAM,			&default_expires},
 	{"timer_interval",	INT_PARAM,			&timer_interval},
 	{"enable_clustering",	INT_PARAM,			&enable_clustering},
