@@ -1074,6 +1074,12 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 	if (!ureg_cluster_shtag_is_active( &rec->cluster_shtag, rec->cluster_id))
 		return 0;
 
+	if (auto_disable_on_failure && !(rec->flags & REG_ENABLED) &&
+		(rec->state == WRONG_CREDENTIALS_STATE ||
+		 rec->state == REGISTRAR_ERROR_STATE)) {
+		return 0;
+	}
+
 	switch(rec->state){
 	case REGISTERING_STATE:
 	case UNREGISTERING_STATE:
