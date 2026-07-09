@@ -42,16 +42,27 @@ this check (`add_to_bl = 0`).
 ## When It Runs
 
 The selection is driven from the registrant's periodic timer
-(`run_timer_check`), only at the moments where a different IP can help:
+(`run_timer_check`), and **only** when retrying after a failure that a
+different IP can actually fix:
 
 | Situation | Registrant state | Check runs? |
 |-----------|------------------|-------------|
-| Fresh registration (startup, reload, enable, after unregister) | `NOT_REGISTERED_STATE` (genuine) | **Yes** |
-| Healthy periodic refresh | `REGISTERED_STATE` → timeout | No |
-| Retry after 408 / no reply | `REGISTER_TIMEOUT_STATE` | **Yes** |
-| Retry after 503 / other registrar error | `REGISTRAR_ERROR_STATE` | **Yes** |
-| Auth challenge (401/407) re-send, 423 re-send | — | No |
-| Wrong credentials / internal error retry | `WRONG_CREDENTIALS_STATE` / `INTERNAL_ERROR_STATE` | No (a different IP won't fix credentials) |
+| Fresh registration (startup, reload, enable, after unregister) | `NOT_REGISTERED_STATE` | No — uses normal DNS/first-address |
+| Healthy periodic refresh | `REGISTERED_STATE` → timeout | No — uses pinned `forced_to_su` |
+| 401/407 auth re-register | in `run_reg_tm_cback` | No — uses pinned `forced_to_su` (follows the challenger) |
+| Retry after **408 / no reply** | `REGISTER_TIMEOUT_STATE` | **Yes** |
+| Retry after **503** | `REGISTRAR_ERROR_STATE` + `bl_failover_pending` | **Yes** |
+| Retry after any other error (403/404/500/502/504, 423) | `REGISTRAR_ERROR_STATE` / `INTERNAL_ERROR_STATE` / `WRONG_CREDENTIALS_STATE` | No |
+
+Everything except the two failover rows keeps the original behavior: the
+in-dialog / periodic / auth requests use the destination pinned on the record
+(`forced_to_su`) in memory; DNS is still resolved each time but its result is
+discarded in favor of that cached address.
+
+The 503 case is distinguished from other registrar errors by a transient
+`bl_failover_pending` flag set on the record in `run_reg_tm_cback` (only when
+the reply code is exactly 503), and read on the timer retry. 408 and
+no-response already have their own dedicated state (`REGISTER_TIMEOUT_STATE`).
 
 > **Note:** re-selection only fails over to a different IP if the failed IP is
 > actually marked blacklisted by something (e.g. `tm` DNS failover with the core
@@ -104,10 +115,10 @@ modparam("uac_registrant", "enable_blacklist_failover", 1)
 
 - Applies to **REGISTER** only. Un-REGISTER (teardown) is not failover-driven
   and is left unchanged.
-- The check is triggered from the periodic timer at the fresh-registration and
-  failure-retry points described in *When It Runs* — not on every send. Other
-  fresh-register entry points (e.g. the `reg_enable` MI command) are
-  intentionally not hooked to keep the change minimal.
+- The check is triggered from the periodic timer (`run_timer_check`) **only on
+  the retry after a 408 / no-reply / 503** — not on every send, not on the
+  fresh first attempt, and not on the 401/407 auth step. This keeps the normal
+  registration path completely unchanged.
 
 ## Operational Notes / Caveats
 
@@ -125,5 +136,6 @@ modparam("uac_registrant", "enable_blacklist_failover", 1)
 
 | File | Change |
 |------|--------|
-| `registrant.c` | Added `enable_blacklist_failover` global + module parameter, added `select_non_blacklisted_dst()` helper, called it (when enabled) from `run_timer_check()` at the fresh-registration and failure-retry (408/503/no-reply) points; added includes for `proxy.h`, `resolve.h`, `blacklists.h` |
+| `registrant.c` | Added `enable_blacklist_failover` global + module parameter, added `select_non_blacklisted_dst()` helper, called it (when enabled) from `run_timer_check()` only on the 408/no-reply and 503 retry; set the `bl_failover_pending` flag in `run_reg_tm_cback()` to mark 503; added includes for `proxy.h`, `resolve.h`, `blacklists.h` |
+| `reg_records.h` | Added transient `bl_failover_pending` flag to `reg_record_t` (marks a 503 reply for the timer retry) |
 | `doc/uac_registrant_admin.xml` | Documented the `enable_blacklist_failover` parameter |

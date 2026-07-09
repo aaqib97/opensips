@@ -98,6 +98,7 @@ typedef struct reg_record {
 	str proxy_uri; // Proxy URI
 	int cluster_id;
 	int failed_attempts; // Counter for failed attempts since last reload - sagar
+	int bl_failover_pending; // set when last reply was 503, so timer retry does blacklist failover
 	unsigned int flags;
 	struct reg_record *prev;
 	struct reg_record *next;

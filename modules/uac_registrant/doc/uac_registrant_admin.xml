@@ -191,12 +191,14 @@ modparam("uac_registrant", "enable_clustering", 1)
 		resolved address.
 		</para>
 		<para>
-		To avoid adding overhead to the healthy re-registration path, the check
-		is performed only when it can actually help: on a <emphasis>fresh
-		registration</emphasis>, and when <emphasis>retrying after a failure</emphasis>
-		(a 408 / no reply, or a 503 / other registrar error). A successful
-		periodic refresh keeps using its current destination and incurs no extra
-		cost.
+		To avoid adding overhead to the normal registration path, the check is
+		performed only when retrying after a failure that a different IP can
+		fix: a <emphasis>408 / no reply</emphasis>, or a <emphasis>503</emphasis>.
+		The fresh first attempt, a successful periodic refresh, and the 401/407
+		authenticated re-register all keep using their normal destination (the
+		address pinned on the record in memory) and incur no extra cost. Other
+		errors (e.g. 4xx such as 403/404, or 5xx other than 503) do not trigger
+		failover.
 		</para>
 		<para>
 		The check uses the core blacklist facility (the same one consulted by

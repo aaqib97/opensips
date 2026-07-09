@@ -776,6 +776,7 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 				rec->state = INTERNAL_ERROR_STATE;
 		} else {
 			rec->state = REGISTRAR_ERROR_STATE;
+			rec->bl_failover_pending = 0; /* 423 error, not a failover case */
 			rec->registration_timeout = now + rec->expires - timer_interval;
 		}
 		break;
@@ -792,6 +793,8 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 		} else {
 			/* we got an error from the server */
 			rec->state = REGISTRAR_ERROR_STATE;
+			/* only a 503 is eligible for blacklist failover on retry */
+			rec->bl_failover_pending = (statuscode==503) ? 1 : 0;
 			rec->registration_timeout = now + rec->expires - timer_interval;
 
 		}
@@ -869,11 +872,12 @@ void reg_tm_cback(struct cell *t, int type, struct tmcb_params *ps)
  * blacklisted (e.g. the core "dns" failover blacklist, or any BL_BY_DEFAULT
  * list). t_uac() honors forced_to_su as the send destination.
  *
- * To keep the overhead off the steady-state re-register path, this is NOT run
- * on every send. It is invoked only on a fresh registration and when retrying
- * after a failure (408/no-reply -> REGISTER_TIMEOUT_STATE, 503/other errors ->
- * REGISTRAR_ERROR_STATE). A healthy periodic refresh keeps using its current
- * destination and pays no extra cost.
+ * To keep the overhead off the normal path, this is NOT run on every send. It
+ * is invoked only when retrying after a failure that a different IP can fix:
+ * 408 / no reply (REGISTER_TIMEOUT_STATE) or 503 (REGISTRAR_ERROR_STATE with
+ * bl_failover_pending set). The fresh first attempt, healthy periodic refresh
+ * and 401/407 auth re-register all keep using their normal destination (the
+ * forced_to_su pinned on the record) and pay no extra cost.
  *
  * If resolving fails or every resolved IP is blacklisted, forced_to_su is left
  * untouched, so the normal (first-address) selection applies and the request is
@@ -1193,11 +1197,11 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 		}
 		if (rec->flags&REG_ENABLED) {
 			/* retry after a failure -> try a non-blacklisted destination,
-			 * but only for the failures where a different IP may help
-			 * (408/no-reply and 503/other registrar errors) */
+			 * but only for 408 / no-reply (REGISTER_TIMEOUT_STATE) and 503
+			 * (REGISTRAR_ERROR_STATE with bl_failover_pending set) */
 			if (enable_blacklist_failover &&
 				(rec->state==REGISTER_TIMEOUT_STATE ||
-				 rec->state==REGISTRAR_ERROR_STATE))
+				 (rec->state==REGISTRAR_ERROR_STATE && rec->bl_failover_pending)))
 				select_non_blacklisted_dst(rec);
 			new_call_id_ftag_4_record(rec, s_now);
 			if(send_register(i, rec, NULL)==1) {
@@ -1230,12 +1234,6 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 			}
 		}else{
 		if (rec->flags&REG_ENABLED) {
-			/* fresh registration (genuine NOT_REGISTERED_STATE, not the
-			 * fall-through refresh from REGISTERED_STATE) -> pick a
-			 * non-blacklisted destination before the first send */
-			if (enable_blacklist_failover &&
-				rec->state == NOT_REGISTERED_STATE)
-				select_non_blacklisted_dst(rec);
 			if(send_register(i, rec, NULL)==1) {
 				rec->last_register_sent = now;
 				rec->state = REGISTERING_STATE;
