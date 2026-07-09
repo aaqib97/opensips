@@ -872,12 +872,13 @@ void reg_tm_cback(struct cell *t, int type, struct tmcb_params *ps)
  * blacklisted (e.g. the core "dns" failover blacklist, or any BL_BY_DEFAULT
  * list). t_uac() honors forced_to_su as the send destination.
  *
- * To keep the overhead off the normal path, this is NOT run on every send. It
- * is invoked only when retrying after a failure that a different IP can fix:
- * 408 / no reply (REGISTER_TIMEOUT_STATE) or 503 (REGISTRAR_ERROR_STATE with
- * bl_failover_pending set). The fresh first attempt, healthy periodic refresh
- * and 401/407 auth re-register all keep using their normal destination (the
- * forced_to_su pinned on the record) and pay no extra cost.
+ * To keep the overhead off the steady-state path, this is NOT run on every
+ * send. It is invoked before a fresh registration (genuine NOT_REGISTERED_STATE
+ * and manual reg_enable), and when retrying after a failure that a different IP
+ * can fix: 408 / no reply (REGISTER_TIMEOUT_STATE) or 503 (REGISTRAR_ERROR_STATE
+ * with bl_failover_pending set). A healthy periodic refresh (REGISTERED_STATE
+ * fall-through) and 401/407 auth re-register keep using their current
+ * destination (the forced_to_su pinned on the record) and pay no extra cost.
  *
  * If resolving fails or every resolved IP is blacklisted, forced_to_su is left
  * untouched, so the normal (first-address) selection applies and the request is
@@ -1234,6 +1235,14 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 			}
 		}else{
 		if (rec->flags&REG_ENABLED) {
+			/* fresh registration (genuine NOT_REGISTERED_STATE, not the
+			 * fall-through refresh from REGISTERED_STATE) -> pick a
+			 * non-blacklisted destination before the first send, so we
+			 * skip an already-blacklisted IP instead of waiting for the
+			 * core DNS failover to discover it again via a 503/timeout */
+			if (enable_blacklist_failover &&
+				rec->state == NOT_REGISTERED_STATE)
+				select_non_blacklisted_dst(rec);
 			if(send_register(i, rec, NULL)==1) {
 				rec->last_register_sent = now;
 				rec->state = REGISTERING_STATE;
@@ -1711,6 +1720,11 @@ int run_mi_reg_enable(void *e_data, void *data, void *r_data)
 				}
 				new_call_id_ftag_4_record(rec, &str_now);
 
+				/* manual (re)enable is a fresh send too -> route it through
+				 * the same blacklist-aware selection as the timer path */
+				if (enable_blacklist_failover)
+					select_non_blacklisted_dst(rec);
+
 				if(send_register((unsigned long)coords->extra, rec, NULL)==1) {
 					rec->last_register_sent = now;
 					rec->state = REGISTERING_STATE;
@@ -1719,6 +1733,8 @@ int run_mi_reg_enable(void *e_data, void *data, void *r_data)
 					rec->state = INTERNAL_ERROR_STATE;
 				}
 			} else if (rec->state != AUTHENTICATING_STATE && rec->state != REGISTERING_STATE && rec->state != AUTHENTICATING_UNREGISTER_STATE && rec->state != UNREGISTERING_STATE) {
+				if (enable_blacklist_failover)
+					select_non_blacklisted_dst(rec);
 				if(send_register((unsigned long)coords->extra, rec, NULL)==1) {
 					rec->last_register_sent = now;
 					rec->state = REGISTERING_STATE;
