@@ -181,6 +181,52 @@ modparam("uac_registrant", "enable_clustering", 1)
 		</example>
 	</section>
 
+	<section id="param_enable_blacklist_failover" xreflabel="enable_blacklist_failover">
+		<title><varname>enable_blacklist_failover</varname> (integer)</title>
+		<para>
+		When enabled, the module resolves the next hop (the outbound proxy if
+		configured, otherwise the registrar) and selects the first resolved IP
+		address that is not currently blacklisted, allowing the registrant to
+		fail over to a non-blacklisted IP instead of always using the first
+		resolved address.
+		</para>
+		<para>
+		To avoid adding overhead to the healthy re-registration path, the check
+		is performed only when it can actually help: on a <emphasis>fresh
+		registration</emphasis>, and when <emphasis>retrying after a failure</emphasis>
+		(a 408 / no reply, or a 503 / other registrar error). A successful
+		periodic refresh keeps using its current destination and incurs no extra
+		cost.
+		</para>
+		<para>
+		The check uses the core blacklist facility (the same one consulted by
+		<emphasis>tm</emphasis>), searching the default blacklists. In a typical
+		setup this is the built-in <quote>dns</quote> failover blacklist, which
+		requires the core global parameter <varname>disable_dns_blacklist</varname>
+		to be set to <emphasis>0</emphasis> (it is off by default). If no
+		default blacklist is populated, the check is a no-op and the first
+		resolved address is used, exactly as before.
+		</para>
+		<para>
+		If every resolved IP is blacklisted (or the next hop cannot be resolved),
+		the module falls back to the normal first-address selection and still
+		attempts the request.
+		</para>
+		<para>
+		<emphasis>
+			Default value is 0 / off (previous behavior, no blacklist check).
+		</emphasis>
+		</para>
+		<example>
+		<title>Set <varname>enable_blacklist_failover</varname> parameter</title>
+		<programlisting format="linespecific">
+...
+modparam("uac_registrant", "enable_blacklist_failover", 1)
+...
+</programlisting>
+		</example>
+	</section>
+
 	<section id="param_db_url" xreflabel="db_url">
 		<title><varname>db_url</varname> (string)</title>
 		<para>

@@ -39,6 +39,9 @@
 #include "../uac_auth/uac_auth.h"
 #include "../../lib/digest_auth/digest_auth.h"
 #include "../../globals.h"
+#include "../../proxy.h"
+#include "../../resolve.h"
+#include "../../blacklists.h"
 #include "reg_records.h"
 #include "reg_db_handler.h"
 #include "clustering.h"
@@ -121,6 +124,7 @@ reg_table_t reg_htable = NULL;
 unsigned int reg_hsize = 1;
 unsigned int run_db_custom_updates = 0;
 unsigned int enable_custom_user_agent = 0;
+unsigned int enable_blacklist_failover = 0;
 
 static str db_url = {NULL, 0};
 
@@ -171,6 +175,7 @@ static const param_export_t params[]= {
 	{"state_column",	STR_PARAM,		&state_column.s},
 	{"user_agent_column",	STR_PARAM,	&user_agent_column.s},
 	{"enable_custom_user_agent",	INT_PARAM,	&enable_custom_user_agent},
+	{"enable_blacklist_failover",	INT_PARAM,	&enable_blacklist_failover},
 	{0,0,0}
 };
 
@@ -856,6 +861,102 @@ void reg_tm_cback(struct cell *t, int type, struct tmcb_params *ps)
 }
 
 
+/*
+ * Blacklist-aware destination selection (enabled via enable_blacklist_failover).
+ *
+ * Resolves the next hop (outbound proxy if set, otherwise the registrar) and
+ * pins, via rec->td.forced_to_su, the first resolved IP that is NOT currently
+ * blacklisted (e.g. the core "dns" failover blacklist, or any BL_BY_DEFAULT
+ * list). t_uac() honors forced_to_su as the send destination.
+ *
+ * To keep the overhead off the steady-state re-register path, this is NOT run
+ * on every send. It is invoked only on a fresh registration and when retrying
+ * after a failure (408/no-reply -> REGISTER_TIMEOUT_STATE, 503/other errors ->
+ * REGISTRAR_ERROR_STATE). A healthy periodic refresh keeps using its current
+ * destination and pays no extra cost.
+ *
+ * If resolving fails or every resolved IP is blacklisted, forced_to_su is left
+ * untouched, so the normal (first-address) selection applies and the request is
+ * still attempted. When the feature is disabled, this function is not called and
+ * behavior is unchanged.
+ */
+static void select_non_blacklisted_dst(reg_record_t *rec)
+{
+	str *next_hop;
+	struct sip_uri puri;
+	struct proxy_l *p;
+	union sockaddr_union su;
+	struct ip_addr ip;
+	unsigned short port, proto;
+	str empty = str_init("");
+	int found = 0;
+
+	next_hop = (rec->td.obp.s && rec->td.obp.len) ?
+		&rec->td.obp : &rec->td.rem_target;
+
+	if (parse_uri(next_hop->s, next_hop->len, &puri) < 0) {
+		LM_ERR("blacklist failover: bad next-hop URI [%.*s]\n",
+			next_hop->len, next_hop->s);
+		return;
+	}
+
+	/* honor the protocol forced by the registrant's socket, if any -
+	 * mirrors how t_uac() resolves the destination */
+	proto = puri.proto;
+	if (rec->td.send_sock && rec->td.send_sock->proto != PROTO_NONE)
+		proto = rec->td.send_sock->proto;
+
+	p = mk_proxy(puri.maddr_val.len ? &puri.maddr_val : &puri.host,
+		puri.port_no, proto, (puri.type == SIPS_URI_T) ? 1 : 0);
+	if (!p) {
+		LM_ERR("blacklist failover: cannot resolve next hop [%.*s]\n",
+			next_hop->len, next_hop->s);
+		return;
+	}
+
+	/* a processing context is required to hold the blacklist search marker;
+	 * push a private one just for the check and pop it before sending */
+	if (!push_new_global_context()) {
+		LM_ERR("blacklist failover: failed to alloc new global context\n");
+		free_proxy(p);
+		pkg_free(p);
+		return;
+	}
+	memset(current_processing_ctx, 0, context_size(CONTEXT_GLOBAL));
+	reset_bl_markers();
+
+	proto = p->proto;
+	port = p->port ? p->port : SIP_PORT;
+	hostent2su(&su, &p->host, p->addr_idx, port);
+
+	while (1) {
+		su2ip_addr(&ip, &su);
+		if (!check_against_blacklist(&ip, &empty, port, proto)) {
+			rec->td.forced_to_su = su;
+			found = 1;
+			break;
+		}
+		/* current IP is blacklisted -> advance to the next resolved
+		 * address (add_to_bl=0: do not add anything to the blacklist) */
+		if (get_next_su(p, &su, 0) != 0)
+			break; /* no more resolved addresses */
+		proto = p->proto;
+		port = p->port ? p->port : SIP_PORT;
+	}
+
+	pop_pushed_global_context();
+	free_proxy(p);
+	pkg_free(p);
+
+	if (found)
+		LM_DBG("blacklist failover: selected non-blacklisted destination "
+			"for AOR [%.*s]\n", rec->td.rem_uri.len, rec->td.rem_uri.s);
+	else
+		LM_WARN("blacklist failover: all destinations blacklisted for AOR "
+			"[%.*s]; sending anyway\n",
+			rec->td.rem_uri.len, rec->td.rem_uri.s);
+}
+
 int send_register(unsigned int hash_index, reg_record_t *rec, str *auth_hdr)
 {
 	int result, expires_len;
@@ -1091,6 +1192,13 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 			break;
 		}
 		if (rec->flags&REG_ENABLED) {
+			/* retry after a failure -> try a non-blacklisted destination,
+			 * but only for the failures where a different IP may help
+			 * (408/no-reply and 503/other registrar errors) */
+			if (enable_blacklist_failover &&
+				(rec->state==REGISTER_TIMEOUT_STATE ||
+				 rec->state==REGISTRAR_ERROR_STATE))
+				select_non_blacklisted_dst(rec);
 			new_call_id_ftag_4_record(rec, s_now);
 			if(send_register(i, rec, NULL)==1) {
 				rec->last_register_sent = now;
@@ -1122,6 +1230,12 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 			}
 		}else{
 		if (rec->flags&REG_ENABLED) {
+			/* fresh registration (genuine NOT_REGISTERED_STATE, not the
+			 * fall-through refresh from REGISTERED_STATE) -> pick a
+			 * non-blacklisted destination before the first send */
+			if (enable_blacklist_failover &&
+				rec->state == NOT_REGISTERED_STATE)
+				select_non_blacklisted_dst(rec);
 			if(send_register(i, rec, NULL)==1) {
 				rec->last_register_sent = now;
 				rec->state = REGISTERING_STATE;
