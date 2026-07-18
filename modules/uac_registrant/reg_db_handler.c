@@ -532,6 +532,12 @@ int reg_update_db_state(reg_record_t *rec)
 			VAL_STR(&key_vals[1]) = rec->third_party_registrant;
 			VAL_STR(&key_vals[2]) = rec->third_party_registrant;
 
+			/* Auto-disable on failure: reset error states to waiting state */
+			if (auto_disable_on_failure && 
+				(rec->state == WRONG_CREDENTIALS_STATE || rec->state == REGISTRAR_ERROR_STATE)) {
+				rec->flags &= ~REG_ENABLED;
+			}
+
 			VAL_TYPE(&update_val_cols[0]) = DB_INT;
 			VAL_NULL(&update_val_cols[0]) = 0;
 			VAL_INT(&update_val_cols[0]) = rec->flags&REG_ENABLED ? 0 : 1;

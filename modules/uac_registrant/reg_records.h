@@ -123,6 +123,7 @@ typedef struct record_coords {
 extern reg_table_t reg_htable;
 extern unsigned int reg_hsize;
 extern unsigned int run_db_custom_updates;
+extern unsigned int auto_disable_on_failure;
 
 void *reg_alloc(size_t size);
 void reg_free(void *ptr);

@@ -125,6 +125,7 @@ unsigned int reg_hsize = 1;
 unsigned int run_db_custom_updates = 0;
 unsigned int enable_custom_user_agent = 0;
 unsigned int enable_blacklist_failover = 0;
+unsigned int auto_disable_on_failure = 0;
 
 static str db_url = {NULL, 0};
 
@@ -156,6 +157,7 @@ typedef struct reg_tm_cb {
 static const param_export_t params[]= {
 	{"hash_size",		INT_PARAM,			&reg_hsize},
 	{"run_db_custom_updates",		INT_PARAM,			&run_db_custom_updates},
+	{"auto_disable_on_failure",	INT_PARAM,			&auto_disable_on_failure},
 	{"default_expires",	INT_PARAM,			&default_expires},
 	{"timer_interval",	INT_PARAM,			&timer_interval},
 	{"enable_clustering",	INT_PARAM,			&enable_clustering},
@@ -1177,6 +1179,12 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 
 	if (!ureg_cluster_shtag_is_active( &rec->cluster_shtag, rec->cluster_id))
 		return 0;
+
+	if (auto_disable_on_failure && !(rec->flags & REG_ENABLED) &&
+		(rec->state == WRONG_CREDENTIALS_STATE ||
+		 rec->state == REGISTRAR_ERROR_STATE)) {
+		return 0;
+	}
 
 	switch(rec->state){
 	case REGISTERING_STATE:
