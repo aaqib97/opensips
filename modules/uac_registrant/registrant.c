@@ -394,7 +394,6 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 	time_t now;
 	str str_now = {NULL, 0};
 	reg_tm_cb_t *cb_param;
-	int b = 0;
 
 	cb_param = tm_cback_data->cb_param;
 	if (rec!=cb_param->uac) {
@@ -410,9 +409,8 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 
 	if (ps->rpl==FAKED_REPLY)
 		memset(&rec->td.forced_to_su, 0, sizeof(union sockaddr_union));
-	else {
-                b = (t->nr_of_outgoings) ? t->nr_of_outgoings - 1 : 0;
-                rec->td.forced_to_su = t->uac[b].request.dst.to;		
+	else (rec->td.forced_to_su.s.sa_family == AF_UNSPEC || t->uac[0].last_received == 503)
+                rec->td.forced_to_su = t->uac[0].request.dst.to;		
 	}
 
 	statuscode = ps->code;
