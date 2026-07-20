@@ -410,14 +410,9 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 
 	if (ps->rpl==FAKED_REPLY)
 		memset(&rec->td.forced_to_su, 0, sizeof(union sockaddr_union));
-	else if (rec->td.forced_to_su.s.sa_family == AF_UNSPEC) {
-		/* pin the destination of the branch that actually produced the
-		 * relayed final reply, not blindly branch 0: when tm forks/fails
-		 * over across resolved IPs (e.g. A->503, B->503, C->200), the
-		 * winning branch is C, not uac[0]=A. relaied_reply_branch is <0
-		 * for no-reply(-1)/local(-2), so fall back to branch 0 then. */
-		b = (t->relaied_reply_branch >= 0) ? t->relaied_reply_branch : 0;
-		rec->td.forced_to_su = t->uac[b].request.dst.to;
+	else {
+                b = (t->nr_of_outgoings) ? t->nr_of_outgoings - 1 : 0;
+                rec->td.forced_to_su = t->uac[b].request.dst.to;		
 	}
 
 	statuscode = ps->code;
