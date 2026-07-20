@@ -409,7 +409,7 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 
 	if (ps->rpl==FAKED_REPLY)
 		memset(&rec->td.forced_to_su, 0, sizeof(union sockaddr_union));
-	else (rec->td.forced_to_su.s.sa_family == AF_UNSPEC || t->uac[0].last_received == 503)
+	else if (rec->td.forced_to_su.s.sa_family == AF_UNSPEC || t->uac[0].last_received == 503)
                 rec->td.forced_to_su = t->uac[0].request.dst.to;		
 	}
 
