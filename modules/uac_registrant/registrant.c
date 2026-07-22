@@ -414,7 +414,8 @@ int run_reg_tm_cback(void *e_data, void *data, void *r_data)
 	 *   - always on FAKED_REPLY (timeout / no response), and
 	 *   - on a 503 or 408 final reply when failover is enabled.
 	 * Otherwise, pin the destination that was just used (FQDN stickiness). 
-	 * Changes For SRV Failover*/
+	 * Changes For SRV Failover
+	 * TRAG-15815*/
 	if (ps->rpl==FAKED_REPLY)
 		memset(&rec->td.forced_to_su, 0, sizeof(union sockaddr_union));
 	else if (rec->td.forced_to_su.s.sa_family == AF_UNSPEC || (enable_failover && (t->uac[0].last_received == 503 || t->uac[0].last_received == 408)))
@@ -1086,7 +1087,7 @@ int run_timer_check(void *e_data, void *data, void *r_data)
 
 	if (!ureg_cluster_shtag_is_active( &rec->cluster_shtag, rec->cluster_id))
 		return 0;
-
+	/* TRAG-15021 */
 	if (auto_disable_on_failure && !(rec->flags & REG_ENABLED) &&
 		(rec->state == WRONG_CREDENTIALS_STATE ||
 		 rec->state == REGISTRAR_ERROR_STATE)) {
